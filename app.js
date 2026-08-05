@@ -216,6 +216,7 @@ function renderTab(name) {
    a sub-tab pops to the base entry and renders the hub; backing from the hub
    then exits. */
 let atRoot = true;
+let homeSubview = '';
 history.replaceState({ tab: 'home' }, '');
 
 function switchTab(name) {
@@ -224,6 +225,7 @@ function switchTab(name) {
     else renderTab('home');
     return;
   }
+  if (homeSubview) homeSubview = '';
   if (atRoot) {
     history.pushState({ tab: name }, '');
     atRoot = false;
@@ -235,7 +237,9 @@ function switchTab(name) {
 
 window.addEventListener('popstate', () => {
   atRoot = true;
-  if (state.tab !== 'home') renderTab('home');
+  const wasSub = homeSubview;
+  homeSubview = '';
+  if (wasSub || state.tab !== 'home') renderTab('home');
 });
 
 document.addEventListener('click', (e) => {
@@ -487,7 +491,13 @@ function driverNames() {
 function openDossier() {
   const names = driverNames();
   if (!names.length) { toast('No driver records yet.'); return; }
-  switchTab('home');
+  if (atRoot) {
+    history.pushState({ tab: 'home', sub: 'dossier' }, '');
+    atRoot = false;
+  } else {
+    history.replaceState({ tab: 'home', sub: 'dossier' }, '');
+  }
+  homeSubview = 'dossier';
   const view = document.getElementById('view');
   view.innerHTML = '';
   view.appendChild(el('div', { class: 'page-head' }, [el('h2', { class: 'page-title' }, ['Driver Dossier'])]));
