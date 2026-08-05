@@ -1726,8 +1726,8 @@ function renderPaceFormInto(view) {
   form.appendChild(el('section', { class: 'card' }, [
     el('h2', { class: 'card-title' }, ['Driver Information']),
     paceField('Driver', 'driver', 'text', current.driver),
-    paceField('Exp. (Years)', 'exp', 'text', current.exp),
     paceField('Lic. #', 'lic', 'text', current.lic),
+    paceField('Exp.', 'exp', 'date', current.exp),
     paceField('Evaluator', 'evaluator', 'text', current.evaluator),
     paceField('Date', 'paceDate', 'date', current.date, { required: true }),
   ]));
@@ -1750,12 +1750,12 @@ function renderPaceFormInto(view) {
     current.clicker = 0;
     clickerCount.textContent = '0';
   } }, ['Reset']);
-  form.appendChild(el('section', { class: 'card clicker-card' }, [
+  const clickerCard = el('section', { class: 'card clicker-card' }, [
     el('h2', { class: 'card-title' }, ['Verbal Narration Clicker']),
     el('p', { class: 'timed-note' }, ['Driver verbally narrates full visual field, scanning behavior, and hazard awareness out loud in real time. Tap once for each narration; evaluator can hold the device like a clicker.']),
     clickerCount,
     el('div', { class: 'clicker-row' }, [clickerBtn, clickerReset]),
-  ]));
+  ]);
 
   const progress = el('div', { class: 'progress' });
   view.appendChild(progress);
@@ -1801,6 +1801,8 @@ function renderPaceFormInto(view) {
       ...blocks,
     ]));
   }
+
+  form.appendChild(clickerCard);
 
   form.appendChild(el('section', { class: 'card' }, [
     el('h2', { class: 'card-title' }, ['Quarterly Driving Evaluation']),
@@ -2035,7 +2037,7 @@ function renderPaceRecordsInto(view) {
       el('div', { class: 'rec-main' }, [
         el('div', {}, [
         el('div', { class: 'rec-name' }, [r.driver || r.evaluator || '(no driver)']),
-        el('div', { class: 'rec-meta' }, ['Lic ' + (r.lic || '–') + '  •  ' + (r.date || 'no date') + (r.nextPaceDate ? '  •  Next PACE ' + r.nextPaceDate : '')]),
+        el('div', { class: 'rec-meta' }, [(r.exp ? 'Lic exp ' + r.exp + '  •  ' : '') + 'Lic ' + (r.lic || '–') + '  •  ' + (r.date || 'no date') + (r.nextPaceDate ? '  •  Next PACE ' + r.nextPaceDate : '')]),
         ]),
         el('span', { class: 'badge ' + (low ? 'bad-ni' : 'bad-ok') }, [low ? low + ' NP' : 'OK']),
       ]),
@@ -2077,11 +2079,11 @@ function openPaceReport(id) {
   const meta = el('table', { class: 'rtbl' }, []);
   const metaRow = el('tr', {}, []);
   metaRow.appendChild(el('td', {}, ['<strong>Driver:</strong> ' + esc(r.driver || '–')]));
-  metaRow.appendChild(el('td', {}, ['<strong>Exp:</strong> ' + esc(r.exp || '–')]));
+  metaRow.appendChild(el('td', {}, ['<strong>Evaluator:</strong> ' + esc(r.evaluator || '–')]));
   meta.appendChild(metaRow);
   const metaRow2 = el('tr', {}, []);
   metaRow2.appendChild(el('td', {}, ['<strong>Lic. #:</strong> ' + esc(r.lic || '–')]));
-  metaRow2.appendChild(el('td', {}, ['<strong>Evaluator:</strong> ' + esc(r.evaluator || '–')]));
+  metaRow2.appendChild(el('td', {}, ['<strong>Lic Exp:</strong> ' + esc(r.exp || '–')]));
   meta.appendChild(metaRow2);
   if (r.training) {
     const metaRow3 = el('tr', {}, []);
