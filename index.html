@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<meta name="description" content="U.S. AutoForce Driver Hub - quarterly reviews, new-hire training and certifications in one app">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Driver Hub">
+<title>AutoForce Driver Hub</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="hub" class="hub">
+
+<header class="app-header">
+  <div class="brand">
+    <img src="icons/icon-192.png" alt="" class="brand-logo">
+    <div>
+      <h1>AutoForce Driver Hub</h1>
+      <p>Reviews &middot; Training &middot; Certifications</p>
+    </div>
+  </div>
+</header>
+
+<main id="view" class="view">
+  <!-- Rendered by app.js -->
+</main>
+
+<nav class="tabbar">
+  <button class="tab active" data-view="home" aria-label="Home">
+    <svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+    <span>Home</span>
+  </button>
+  <button class="tab" data-view="review" aria-label="Review">
+    <svg viewBox="0 0 24 24"><path d="M5 3h14a1 1 0 0 1 1 1v17l-3-2-3 2-3-2-3 2-3-2-3 2V4a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 8h6M9 12h6" stroke="currentColor" stroke-width="2"/></svg>
+    <span>Review</span>
+  </button>
+  <button class="tab" data-view="training" aria-label="Training">
+    <svg viewBox="0 0 24 24"><path d="M4 19h16M4 19l1-5 6 1-6 4zM20 19l-1-6-5 1 5 5zM12 10l2-5 3 3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+    <span>Training</span>
+  </button>
+  <button class="tab" data-view="certs" aria-label="Certs">
+    <svg viewBox="0 0 24 24"><path d="M12 3l2 4 4 .6-3 2.8.8 4.4L12 12.6 8.2 14.8l.8-4.4-3-2.8L10 7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 18l4 2 4-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <span>Certs</span>
+  </button>
+</nav>
+
+<div id="toast" class="toast" role="status"></div>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>
