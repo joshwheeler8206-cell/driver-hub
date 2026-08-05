@@ -15,6 +15,7 @@ The Hub is a PWA — works in any modern browser and installs to your home scree
 
 - **Live site:** https://joshwheeler8206-cell.github.io/driver-hub/
 - **Android APK:** download from the latest release below (signed, standalone app).
+- **iPhone / iPad:** open the live site in Safari, tap **Share** → **Add to Home Screen** (fullscreen PWA; use Safari for the print/PDF buttons).
 
 ## Companion apps
 
