@@ -187,7 +187,7 @@ function setAccent(color) {
   document.documentElement.style.setProperty('--accent', color);
 }
 
-function switchTab(name) {
+function renderTab(name) {
   state.tab = name;
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === name));
   if (name === 'home') renderHome();
@@ -198,6 +198,33 @@ function switchTab(name) {
   document.getElementById('view').scrollTop = 0;
   window.scrollTo(0, 0);
 }
+
+/* Android back (and browser back) returns to the main hub instead of closing
+   the app. History stays at most 2 entries deep: [base, current]. Backing off
+   a sub-tab pops to the base entry and renders the hub; backing from the hub
+   then exits. */
+let atRoot = true;
+history.replaceState({ tab: 'home' }, '');
+
+function switchTab(name) {
+  if (name === 'home') {
+    if (!atRoot) history.go(-1);
+    else renderTab('home');
+    return;
+  }
+  if (atRoot) {
+    history.pushState({ tab: name }, '');
+    atRoot = false;
+  } else {
+    history.replaceState({ tab: name }, '');
+  }
+  renderTab(name);
+}
+
+window.addEventListener('popstate', () => {
+  atRoot = true;
+  if (state.tab !== 'home') renderTab('home');
+});
 
 document.addEventListener('click', (e) => {
   const tab = e.target.closest('.tab');
