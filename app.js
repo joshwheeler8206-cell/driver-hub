@@ -1652,6 +1652,8 @@ function newPaceEval() {
     sections,
     overallNotes: '',
     training: '',
+    trainingCompleteDate: '',
+    clicker: 0,
     nextPaceDate: '',
     reviewDate: todayISO(),
     evaluatorSig: null,
@@ -1739,6 +1741,22 @@ function renderPaceFormInto(view) {
     ]),
   ]));
 
+  const clickerCount = el('div', { class: 'clicker-count' }, [String(current.clicker || 0)]);
+  const clickerBtn = el('button', { type: 'button', class: 'clicker-btn', onclick: () => {
+    current.clicker = (current.clicker || 0) + 1;
+    clickerCount.textContent = String(current.clicker);
+  } }, ['Tap to Narrate']);
+  const clickerReset = el('button', { type: 'button', class: 'btn ghost small', onclick: () => {
+    current.clicker = 0;
+    clickerCount.textContent = '0';
+  } }, ['Reset']);
+  form.appendChild(el('section', { class: 'card clicker-card' }, [
+    el('h2', { class: 'card-title' }, ['Verbal Narration Clicker']),
+    el('p', { class: 'timed-note' }, ['Driver verbally narrates full visual field, scanning behavior, and hazard awareness out loud in real time. Tap once for each narration; evaluator can hold the device like a clicker.']),
+    clickerCount,
+    el('div', { class: 'clicker-row' }, [clickerBtn, clickerReset]),
+  ]));
+
   const progress = el('div', { class: 'progress' });
   view.appendChild(progress);
 
@@ -1773,6 +1791,10 @@ function renderPaceFormInto(view) {
       'data-sec': sec.id,
       oninput: (e) => { st.notes = e.target.value; },
     }, [st.notes]));
+
+    if (sec.id === 'exec') {
+      blocks.push(paceField('PACE Behavioral Driving Evaluation Training Complete Date', 'trainingCompleteDate', 'date', current.trainingCompleteDate));
+    }
 
     form.appendChild(el('section', { class: 'card' }, [
       el('h2', { class: 'card-title' }, [sec.num + '. ' + sec.title]),
@@ -1942,6 +1964,7 @@ function savePace() {
   current.date = formValue('paceDate');
   current.nextPaceDate = formValue('nextPaceDate');
   current.reviewDate = formValue('reviewDate');
+  current.trainingCompleteDate = formValue('trainingCompleteDate');
 
   if (!current.date) { toast('Date is required.'); return; }
   if (!current.evaluator.trim()) { toast('Evaluator name is required.'); return; }
@@ -2105,10 +2128,20 @@ function openPaceReport(id) {
     ]),
   ]));
 
+  if (r.clicker) {
+    report.appendChild(el('div', { class: 'rsec' }, [
+      el('h3', {}, ['Verbal Narration Clicker']),
+      el('p', {}, [String(r.clicker) + ' narration(s) recorded during the drive']),
+    ]));
+  }
+
   report.appendChild(el('div', { class: 'pace-rfoot' }, [
     el('span', {}, ['Next PACE Drive: ' + (r.nextPaceDate || '—')]),
     el('span', {}, ['Review Date: ' + (r.reviewDate || '—')]),
   ]));
+  if (r.trainingCompleteDate) {
+    report.appendChild(el('p', { class: 'rsub', style: 'margin-top:10px' }, ['PACE Behavioral Driving Evaluation Training Complete Date: ' + r.trainingCompleteDate]));
+  }
 
   view.appendChild(report);
 }

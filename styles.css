@@ -426,6 +426,22 @@ textarea.notes { resize: vertical; min-height: 44px; }
 .timed-sec input { padding: 9px 10px; }
 .timed-note { font-size: 11px; color: var(--muted); margin: 4px 0 0; line-height: 1.35; }
 
+.clicker-card { text-align: center; }
+.clicker-count {
+  font-size: 56px; font-weight: 800; line-height: 1;
+  color: var(--accent); margin: 10px 0 12px;
+  font-variant-numeric: tabular-nums;
+}
+.clicker-row { display: flex; gap: 8px; }
+.clicker-btn {
+  flex: 1; padding: 22px 12px; border: none; border-radius: 14px;
+  background: var(--accent); color: #fff;
+  font-size: 17px; font-weight: 800; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.clicker-btn:active { opacity: .85; }
+.clicker-row .btn { flex: 0 0 auto; }
+
 .pace-toggle-row { display: flex; gap: 8px; margin: 2px 0 10px; flex-wrap: wrap; }
 .pace-toggle {
   flex: 1; min-width: 120px; padding: 10px 12px; border-radius: 10px;
