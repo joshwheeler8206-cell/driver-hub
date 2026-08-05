@@ -82,6 +82,8 @@ const TRAIN_DB = 'usaf_training_db';
 const TRAIN_KEY = 'trainees';
 const CERTS_DB = 'usaf_cert_tracker_db';
 const CERTS_KEY = 'usaf_cert_tracker_v1';
+const PACE_DB = 'usaf_pace_eval_db';
+const PACE_KEY = 'usaf_pace_evals_v1';
 
 const canIdb = typeof indexedDB !== 'undefined';
 const _dbCache = {};
@@ -138,17 +140,20 @@ function persist(dbName, key, data) {
 let evals = [];
 let trainees = [];
 let drivers = [];
+let paceEvals = [];
 
 async function initStorage() {
   if (!canIdb) {
     evals = JSON.parse(localStorage.getItem(EVALS_DB + ':' + EVALS_KEY) || '[]') || [];
     trainees = JSON.parse(localStorage.getItem(TRAIN_DB + ':' + TRAIN_KEY) || '[]') || [];
     drivers = JSON.parse(localStorage.getItem(CERTS_DB + ':' + CERTS_KEY) || '[]') || [];
+    paceEvals = JSON.parse(localStorage.getItem(PACE_DB + ':' + PACE_KEY) || '[]') || [];
     return;
   }
   evals = (await idbGet(EVALS_DB, EVALS_KEY)) || [];
   trainees = (await idbGet(TRAIN_DB, TRAIN_KEY)) || [];
   drivers = (await idbGet(CERTS_DB, CERTS_KEY)) || [];
+  paceEvals = (await idbGet(PACE_DB, PACE_KEY)) || [];
   // migrate from legacy localStorage of the standalone apps
   try {
     const legacyE = JSON.parse(localStorage.getItem(EVALS_KEY));
@@ -162,6 +167,10 @@ async function initStorage() {
     const legacyC = JSON.parse(localStorage.getItem(CERTS_KEY));
     if (legacyC && legacyC.length && !drivers.length) { drivers = legacyC; await persist(CERTS_DB, CERTS_KEY, drivers); }
   } catch (e) {}
+  try {
+    const legacyP = JSON.parse(localStorage.getItem(PACE_KEY));
+    if (legacyP && legacyP.length && !paceEvals.length) { paceEvals = legacyP; await persist(PACE_DB, PACE_KEY, paceEvals); }
+  } catch (e) {}
 }
 
 /* ============================== Router ============================== */
@@ -169,6 +178,7 @@ async function initStorage() {
 const state = {
   tab: 'home',
   review: { sub: 'new', current: null },
+  pace: { sub: 'new', current: null },
   training: { view: 'trainees', currentId: null },
   certs: { driverId: null },
 };
@@ -182,6 +192,7 @@ function switchTab(name) {
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === name));
   if (name === 'home') renderHome();
   else if (name === 'review') renderReviewTab();
+  else if (name === 'pace') renderPaceTab();
   else if (name === 'training') renderTrainingTab();
   else if (name === 'certs') renderCertsTab();
   document.getElementById('view').scrollTop = 0;
@@ -212,10 +223,16 @@ function renderHome() {
   const latestEval = evals.slice().sort((a, b) => (b.evalDate || '').localeCompare(a.evalDate || ''))[0];
   const evalsThisYear = evals.filter((r) => (r.evalDate || '').startsWith(String(new Date().getFullYear()))).length;
 
+  const latestPace = paceEvals.slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
+  const pacesDue = paceEvals.filter((p) => p.nextPaceDate && p.nextPaceDate <= todayISO()).length;
+
   const grid = el('div', { class: 'dash-grid' }, [
     dashCard('📋', 'Quarterly Reviews', String(evals.length),
       latestEval ? 'Last: ' + latestEval.driverName + ' · ' + latestEval.evalDate : 'No reviews yet',
       () => switchTab('review')),
+    dashCard('⏱️', 'PACE Drives', String(paceEvals.length),
+      latestPace ? 'Last: ' + (latestPace.evaluator || '—') + ' · ' + latestPace.date + (pacesDue ? ' · ' + pacesDue + ' due' : '') : 'No PACE evals yet',
+      () => switchTab('pace')),
     dashCard('🎓', 'New-Hire Training', String(inProgress),
       inProgress ? inProgress + ' trainee(s) · ' + released + ' released' : 'No trainees yet',
       () => switchTab('training')),
@@ -233,11 +250,11 @@ function renderHome() {
     el('h2', { class: 'card-title' }, ['Quick Actions']),
     el('div', { class: 'actions' }, [
       el('button', { class: 'btn primary', onclick: () => { switchTab('review'); startNewReview(); } }, ['+ New Review']),
-      el('button', { class: 'btn', onclick: () => { switchTab('training'); addTrainee(); } }, ['+ Add Trainee']),
+      el('button', { class: 'btn', onclick: () => { switchTab('pace'); startNewPace(); } }, ['+ PACE Drive']),
     ]),
     el('div', { class: 'actions', style: 'margin-top:8px' }, [
+      el('button', { class: 'btn', onclick: () => { switchTab('training'); addTrainee(); } }, ['+ Add Trainee']),
       el('button', { class: 'btn', onclick: () => { switchTab('certs'); addDriver(); } }, ['+ Add Driver Cert']),
-      el('button', { class: 'btn', onclick: () => { switchTab('review'); renderReviewSub('quarterly'); } }, ['Quarterly Summary']),
     ]),
   ]));
 
@@ -1569,6 +1586,533 @@ function certPrintHtml() {
     '</body></html>';
 }
 
+/* ================================================================
+   PACE MODULE (Driving Evaluation) - shared with pace-eval app
+   ================================================================ */
+
+const PACE_SECTIONS = [
+  { id: 'plan', num: '1', title: 'PLAN AHEAD', items: [
+    'Examines Vehicle',
+    'Plans Trip',
+    'Driver Position / Safety Restraint',
+  ], timed: [] },
+  { id: 'analyze', num: '2', title: 'ANALYZE SURROUNDINGS', items: [
+    'Identifies distant relevant objects',
+    'Checks blind spots prior to lane change',
+    'Clears intersection (L-R-L-R)',
+    'Compensates for potential hazards',
+    'Adjusts speed to meet environment',
+    'Checks Mirror Regularly (Balanced)',
+  ], timed: [
+    { id: 'eye', label: 'Eye Lead Time' },
+    { id: 'mirror', label: 'Mirror Check Intervals' },
+  ] },
+  { id: 'comm', num: '3', title: 'COMMUNICATES', items: [
+    'Proper use of lights',
+    'Properly uses turn signals, flashers, brake lights',
+    'Covers horn / sounds when needed',
+    'Stays out of others blind spots',
+    'Seeks eye contact with other drivers',
+  ], timed: [] },
+  { id: 'exec', num: '4', title: 'EXECUTE', items: [
+    'Maintains proper space around vehicle',
+    'Choose lane of least resistance',
+    'Keeps vehicle rolling by adjusting to traffic',
+    'Drives within visibility limitations',
+    'Stopping and proceeding at intersections',
+    'Positions vehicle to eliminate risk (turning/backing)',
+  ], timed: [
+    { id: 'following', label: 'Following Distance' },
+  ] },
+];
+
+const PACE_RATINGS = [1, 2, 3];
+const PACE_RATING_LABEL = { 1: 'Not Practiced', 2: 'Somewhat Practiced', 3: 'Always Practiced' };
+
+let paceTimers = {};
+let paceTimerStart = {};
+
+function newPaceEval() {
+  const sections = {};
+  for (const s of PACE_SECTIONS) {
+    const ratings = {};
+    for (const it of s.items) ratings[it] = null;
+    const timed = {};
+    for (const t of s.timed) timed[t.id] = { sec: null, rating: null };
+    sections[s.id] = { ratings, timed, notes: '' };
+  }
+  return {
+    id: uid(),
+    createdAt: new Date().toISOString(),
+    driver: '',
+    exp: '',
+    lic: '',
+    evaluator: '',
+    date: todayISO(),
+    sections,
+    overallNotes: '',
+    training: '',
+    nextPaceDate: '',
+    reviewDate: todayISO(),
+    evaluatorSig: null,
+    employeeSig: null,
+  };
+}
+
+function countPaceLow(ev) {
+  let n = 0;
+  for (const s of PACE_SECTIONS) {
+    for (const it of s.items) if (ev.sections[s.id].ratings[it] === 1) n++;
+    for (const t of s.timed) if (ev.sections[s.id].timed[t.id].rating === 1) n++;
+  }
+  return n;
+}
+
+function countPaceRated(ev) {
+  let n = 0;
+  for (const s of PACE_SECTIONS) {
+    for (const it of s.items) if (ev.sections[s.id].ratings[it]) n++;
+    for (const t of s.timed) if (ev.sections[s.id].timed[t.id].rating) n++;
+  }
+  return n;
+}
+
+function paceTotalItems() {
+  let n = 0;
+  for (const s of PACE_SECTIONS) n += s.items.length + s.timed.length;
+  return n;
+}
+
+function renderPaceTab() {
+  setAccent('#0f766e');
+  renderPaceSub(state.pace.sub);
+}
+
+function paceSubtabs() {
+  const items = [['new', 'New PACE'], ['records', 'Records']];
+  return el('div', { class: 'subtabs' }, items.map(([key, label]) =>
+    el('button', { class: 'subtab' + (state.pace.sub === key ? ' active' : ''), onclick: () => renderPaceSub(key) }, [label])
+  ));
+}
+
+function renderPaceSub(sub) {
+  state.pace.sub = sub;
+  const view = document.getElementById('view');
+  view.innerHTML = '';
+  view.appendChild(paceSubtabs());
+  if (sub === 'records') renderPaceRecordsInto(view);
+  else renderPaceFormInto(view);
+}
+
+function paceField(labelText, id, type, value, extra = {}) {
+  const input = el('input', { type, id, value, ...extra });
+  return el('label', { class: 'field' }, [el('span', { class: 'field-label' }, [labelText]), input]);
+}
+
+function paceTimerHint(id) {
+  if (id === 'eye') return 'Start when the driver first looks ahead; stop when they look away/re-engage. Longer is better.';
+  if (id === 'mirror') return 'Time between mirror checks. Start on one check, stop on the next. Target every 5–8 seconds.';
+  return 'Pick a fixed object ahead. When the vehicle ahead passes it, start; stop when you pass it. 4+ seconds is a safe following distance.';
+}
+
+function renderPaceFormInto(view) {
+  if (!state.pace.current) state.pace.current = newPaceEval();
+  stopPaceTimers();
+  const current = state.pace.current;
+  const form = el('form', { id: 'pace-form' });
+
+  form.appendChild(el('section', { class: 'card' }, [
+    el('h2', { class: 'card-title' }, ['Driver Information']),
+    paceField('Driver', 'driver', 'text', current.driver),
+    paceField('Exp. (Years)', 'exp', 'text', current.exp),
+    paceField('Lic. #', 'lic', 'text', current.lic),
+    paceField('Evaluator', 'evaluator', 'text', current.evaluator),
+    paceField('Date', 'paceDate', 'date', current.date, { required: true }),
+  ]));
+
+  form.appendChild(el('section', { class: 'card' }, [
+    el('h2', { class: 'card-title' }, ['Rating Scale']),
+    el('div', { class: 'pace-legend' }, [
+      el('span', { class: 'l1' }, ['1 – Not Practiced']),
+      el('span', { class: 'l2' }, ['2 – Somewhat Practiced']),
+      el('span', { class: 'l3' }, ['3 – Always Practiced']),
+    ]),
+  ]));
+
+  const progress = el('div', { class: 'progress' });
+  view.appendChild(progress);
+
+  for (const sec of PACE_SECTIONS) {
+    const st = current.sections[sec.id];
+    const blocks = [];
+
+    for (const item of sec.items) {
+      const val = st.ratings[item];
+      blocks.push(el('div', { class: 'item' }, [
+        el('span', { class: 'item-label' }, [item]),
+        el('div', { class: 'rating' }, PACE_RATINGS.map((r) =>
+          el('button', {
+            type: 'button',
+            class: 'rate r' + r + (val === r ? ' on' : ''),
+            'data-sec': sec.id,
+            'data-item': item,
+            'data-rating': r,
+            onclick: (e) => paceSetRating(sec.id, item, r, e.currentTarget),
+          }, [String(r)])
+        )),
+      ]));
+    }
+
+    for (const t of sec.timed) {
+      blocks.push(paceTimedBlock(sec.id, t, st.timed[t.id]));
+    }
+
+    blocks.push(el('textarea', {
+      class: 'notes', rows: 2,
+      placeholder: 'Comments / notes for this section…',
+      'data-sec': sec.id,
+      oninput: (e) => { st.notes = e.target.value; },
+    }, [st.notes]));
+
+    form.appendChild(el('section', { class: 'card' }, [
+      el('h2', { class: 'card-title' }, [sec.num + '. ' + sec.title]),
+      ...blocks,
+    ]));
+  }
+
+  form.appendChild(el('section', { class: 'card' }, [
+    el('h2', { class: 'card-title' }, ['Quarterly Driving Evaluation']),
+    el('span', { class: 'field-label' }, ['Result']),
+    el('div', { class: 'pace-toggle-row' }, [
+      el('button', { type: 'button', class: 'pace-toggle' + (current.training === 'completed' ? ' on' : ''), 'data-train': 'completed', onclick: (e) => paceSetTraining('completed', e.currentTarget) }, ['Training Completed']),
+      el('button', { type: 'button', class: 'pace-toggle' + (current.training === 'continued' ? ' on' : ''), 'data-train': 'continued', onclick: (e) => paceSetTraining('continued', e.currentTarget) }, ['Continued Training']),
+    ]),
+    paceField('Next PACE Drive Date', 'nextPaceDate', 'date', current.nextPaceDate),
+    paceField('Review Date', 'reviewDate', 'date', current.reviewDate),
+  ]));
+
+  form.appendChild(el('section', { class: 'card' }, [
+    el('h2', { class: 'card-title' }, ['Overall Performance Notes / Coaching Points']),
+    el('textarea', { class: 'notes overall', rows: 5, placeholder: 'Coaching observations, strengths, or improvement plans…', oninput: (e) => { current.overallNotes = e.target.value; } }, [current.overallNotes]),
+  ]));
+
+  const sigEvaluator = makeSigPad('Evaluator Signature');
+  const sigEmployee = makeSigPad('Employee Signature');
+  current._sigEvaluator = sigEvaluator;
+  current._sigEmployee = sigEmployee;
+
+  form.appendChild(el('section', { class: 'card' }, [
+    el('h2', { class: 'card-title' }, ['Signatures']),
+    sigEvaluator.wrap,
+    sigEmployee.wrap,
+  ]));
+
+  form.appendChild(el('div', { class: 'actions' }, [
+    el('button', { type: 'button', class: 'btn primary big', onclick: () => savePace() }, ['Save PACE']),
+    el('button', { type: 'button', class: 'btn ghost big', onclick: () => resetPace() }, ['Reset']),
+  ]));
+
+  view.appendChild(form);
+  paceUpdateProgress();
+}
+
+function paceTimedBlock(secId, t, st) {
+  const display = el('div', { class: 'timed-read', 'data-read': t.id }, [st.sec != null ? st.sec + 's' : '0.0s']);
+  const btn = el('button', { type: 'button', class: 'timer-btn', onclick: (e) => togglePaceTimer(t.id, e.currentTarget) }, ['Start']);
+  const input = el('input', {
+    id: 'timed-sec-' + t.id,
+    type: 'number', min: '0', step: '0.1', inputmode: 'decimal',
+    placeholder: 'e.g. 4',
+    value: st.sec != null ? st.sec : '',
+    oninput: (e) => { st.sec = e.target.value === '' ? null : paceRound1(Number(e.target.value)); },
+  });
+  return el('div', { class: 'item timed' }, [
+    el('div', { class: 'timed-main' }, [
+      el('span', { class: 'item-label' }, [t.label + ' (seconds)']),
+      display,
+    ]),
+    btn,
+    el('div', { class: 'timed-foot' }, [
+      el('div', { class: 'timed-sec' }, [
+        el('span', { class: 'field-label' }, ['Seconds']),
+        input,
+      ]),
+      el('div', { class: 'rating' }, PACE_RATINGS.map((r) =>
+        el('button', {
+          type: 'button',
+          class: 'rate r' + r + (st.rating === r ? ' on' : ''),
+          'data-timed': t.id,
+          'data-rating': r,
+          onclick: (e) => paceSetTimedRating(t.id, r, e.currentTarget),
+        }, [String(r)])
+      )),
+    ]),
+    el('p', { class: 'timed-note' }, [paceTimerHint(t.id)]),
+  ]);
+}
+
+function paceSecSection(id) {
+  for (const s of PACE_SECTIONS) for (const t of s.timed) if (t.id === id) return s.id;
+  return null;
+}
+
+function paceRound1(n) {
+  return Math.round(n * 10) / 10;
+}
+
+function stopPaceTimer(id) {
+  if (paceTimers[id]) {
+    clearInterval(paceTimers[id]);
+    delete paceTimers[id];
+  }
+}
+
+function stopPaceTimers() {
+  for (const id of Object.keys(paceTimers)) stopPaceTimer(id);
+}
+
+function togglePaceTimer(id, btn) {
+  const current = state.pace.current;
+  if (!current) return;
+  if (paceTimers[id]) {
+    stopPaceTimer(id);
+    const st = current.sections[paceSecSection(id)].timed[id];
+    st.sec = paceRound1((Date.now() - paceTimerStart[id]) / 1000);
+    const input = document.getElementById('timed-sec-' + id);
+    if (input) input.value = st.sec;
+    btn.classList.remove('running');
+    btn.textContent = 'Start';
+    const read = document.querySelector('.timed-read[data-read="' + id + '"]');
+    if (read) read.classList.remove('running');
+  } else {
+    for (const other of Object.keys(paceTimers)) stopPaceTimer(other);
+    paceTimerStart[id] = Date.now();
+    paceTimers[id] = setInterval(() => {
+      const read = document.querySelector('.timed-read[data-read="' + id + '"]');
+      if (read) read.textContent = (paceRound1((Date.now() - paceTimerStart[id]) / 1000)) + 's';
+    }, 100);
+    btn.classList.add('running');
+    btn.textContent = 'Stop';
+    const read = document.querySelector('.timed-read[data-read="' + id + '"]');
+    if (read) { read.textContent = '0.0s'; read.classList.add('running'); }
+  }
+}
+
+function paceSetRating(secId, item, rating, btn) {
+  const current = state.pace.current;
+  current.sections[secId].ratings[item] = rating;
+  const container = btn.parentNode;
+  for (const b of container.querySelectorAll('.rate')) b.classList.toggle('on', b.dataset.rating === String(rating));
+  paceUpdateProgress();
+}
+
+function paceSetTimedRating(id, rating, btn) {
+  const current = state.pace.current;
+  const secId = paceSecSection(id);
+  if (!secId) return;
+  current.sections[secId].timed[id].rating = rating;
+  const container = btn.parentNode;
+  for (const b of container.querySelectorAll('.rate')) b.classList.toggle('on', b.dataset.rating === String(rating));
+  paceUpdateProgress();
+}
+
+function paceSetTraining(val, btn) {
+  const current = state.pace.current;
+  current.training = current.training === val ? '' : val;
+  const row = btn.parentNode;
+  for (const b of row.querySelectorAll('.pace-toggle')) b.classList.toggle('on', b.dataset.train === current.training);
+}
+
+function paceUpdateProgress() {
+  const current = state.pace.current;
+  if (!current) return;
+  const done = countPaceRated(current);
+  const total = paceTotalItems();
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  const bar = document.querySelector('.progress');
+  if (bar) bar.innerHTML = '<div class="progress-fill" style="width:' + pct + '%"></div><span>' + pct + '% rated</span>';
+}
+
+function savePace() {
+  const current = state.pace.current;
+  current.driver = formValue('driver');
+  current.exp = formValue('exp');
+  current.lic = formValue('lic');
+  current.evaluator = formValue('evaluator');
+  current.date = formValue('paceDate');
+  current.nextPaceDate = formValue('nextPaceDate');
+  current.reviewDate = formValue('reviewDate');
+
+  if (!current.date) { toast('Date is required.'); return; }
+  if (!current.evaluator.trim()) { toast('Evaluator name is required.'); return; }
+
+  stopPaceTimers();
+  current.evaluatorSig = current._sigEvaluator ? current._sigEvaluator.get() : null;
+  current.employeeSig = current._sigEmployee ? current._sigEmployee.get() : null;
+  delete current._sigEvaluator;
+  delete current._sigEmployee;
+
+  const lowCount = countPaceLow(current);
+
+  const idx = paceEvals.findIndex((r) => r.id === current.id);
+  if (idx >= 0) paceEvals[idx] = JSON.parse(JSON.stringify(current));
+  else paceEvals.push(JSON.parse(JSON.stringify(current)));
+
+  persist(PACE_DB, PACE_KEY, paceEvals);
+  toast('Saved' + (lowCount ? ' – ' + lowCount + ' item(s) rated Not Practiced' : '') + '.');
+  state.pace.current = null;
+  renderPaceSub('records');
+}
+
+function resetPace() {
+  if (!confirm('Clear this form and start a new PACE evaluation?')) return;
+  state.pace.current = null;
+  renderPaceSub('new');
+}
+
+function startNewPace() {
+  state.pace.current = newPaceEval();
+  renderPaceSub('new');
+}
+
+function loadPace(id) {
+  const r = paceEvals.find((x) => x.id === id);
+  if (!r) return;
+  state.pace.current = JSON.parse(JSON.stringify(r));
+  renderPaceSub('new');
+  toast('Loaded PACE evaluation. Edit and Save to update.');
+}
+
+function deletePace(id) {
+  const r = paceEvals.find((x) => x.id === id);
+  if (!r) return;
+  if (!confirm('Delete this PACE evaluation?')) return;
+  paceEvals = paceEvals.filter((x) => x.id !== id);
+  persist(PACE_DB, PACE_KEY, paceEvals);
+  renderPaceSub('records');
+  toast('Deleted.');
+}
+
+function renderPaceRecordsInto(view) {
+  const sorted = [...paceEvals].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  view.appendChild(el('div', { class: 'page-head' }, [
+    el('h2', { class: 'page-title' }, ['PACE Evaluations (' + sorted.length + ')']),
+    el('button', { class: 'btn ghost', onclick: exportPaceAll }, ['Export All (JSON)']),
+  ]));
+
+  if (!sorted.length) {
+    view.appendChild(el('div', { class: 'empty small' }, ['No PACE evaluations saved yet. Complete one from the New PACE tab.']));
+    return;
+  }
+
+  const list = el('div', { class: 'rec-list' });
+  for (const r of sorted) {
+    const low = countPaceLow(r);
+    list.appendChild(el('div', { class: 'card rec' }, [
+      el('div', { class: 'rec-main' }, [
+        el('div', {}, [
+        el('div', { class: 'rec-name' }, [r.driver || r.evaluator || '(no driver)']),
+        el('div', { class: 'rec-meta' }, ['Lic ' + (r.lic || '–') + '  •  ' + (r.date || 'no date') + (r.nextPaceDate ? '  •  Next PACE ' + r.nextPaceDate : '')]),
+        ]),
+        el('span', { class: 'badge ' + (low ? 'bad-ni' : 'bad-ok') }, [low ? low + ' NP' : 'OK']),
+      ]),
+      el('div', { class: 'rec-actions' }, [
+        el('button', { class: 'btn ghost small', onclick: () => loadPace(r.id) }, ['Open']),
+        el('button', { class: 'btn ghost small primary-outline', onclick: () => openPaceReport(r.id) }, ['View / Print']),
+        el('button', { class: 'btn ghost small', onclick: () => exportPaceOne(r) }, ['Export']),
+        el('button', { class: 'btn ghost small danger', onclick: () => deletePace(r.id) }, ['Delete']),
+      ]),
+    ]));
+  }
+  view.appendChild(list);
+}
+
+function exportPaceOne(r) {
+  download('pace-eval-' + ((r.driver || r.evaluator).replace(/\s+/g, '_') || 'driver') + '-' + (r.date || 'nodate') + '.json', JSON.stringify(r, null, 2));
+}
+
+function exportPaceAll() {
+  if (!paceEvals.length) { toast('Nothing to export yet.'); return; }
+  download('pace-evaluations-' + todayISO() + '.json', JSON.stringify(paceEvals, null, 2));
+}
+
+function openPaceReport(id) {
+  const r = paceEvals.find((x) => x.id === id);
+  if (!r) return;
+  stopPaceTimers();
+  const view = document.getElementById('view');
+  view.innerHTML = '';
+  view.appendChild(el('div', { class: 'backbar' }, [
+    el('button', { class: 'btn ghost small', onclick: () => renderPaceSub('records') }, ['← Back']),
+    el('button', { class: 'btn primary small', onclick: () => window.print() }, ['Print / PDF']),
+  ]));
+
+  const report = el('div', { class: 'pace-report' }, []);
+  report.appendChild(el('h2', {}, ['PACE Driving Evaluation']));
+  report.appendChild(el('p', { class: 'rsub' }, ['Quarterly ride-along assessment • ' + (r.date || 'no date')]));
+
+  const meta = el('table', { class: 'rtbl' }, []);
+  const metaRow = el('tr', {}, []);
+  metaRow.appendChild(el('td', {}, ['<strong>Driver:</strong> ' + esc(r.driver || '–')]));
+  metaRow.appendChild(el('td', {}, ['<strong>Exp:</strong> ' + esc(r.exp || '–')]));
+  meta.appendChild(metaRow);
+  const metaRow2 = el('tr', {}, []);
+  metaRow2.appendChild(el('td', {}, ['<strong>Lic. #:</strong> ' + esc(r.lic || '–')]));
+  metaRow2.appendChild(el('td', {}, ['<strong>Evaluator:</strong> ' + esc(r.evaluator || '–')]));
+  meta.appendChild(metaRow2);
+  if (r.training) {
+    const metaRow3 = el('tr', {}, []);
+    metaRow3.appendChild(el('td', {}, ['<strong>Result:</strong> ' + (r.training === 'completed' ? 'Training Completed' : 'Continued Training')]));
+    metaRow3.appendChild(el('td', {}, []));
+    meta.appendChild(metaRow3);
+  }
+  report.appendChild(meta);
+
+  for (const sec of PACE_SECTIONS) {
+    const st = r.sections[sec.id];
+    const rows = [];
+    for (const item of sec.items) {
+      const val = st.ratings[item];
+      rows.push(el('tr', {}, [el('td', {}, [item]), el('td', { style: 'width:34%' }, [val ? '★ ' + PACE_RATING_LABEL[val] : '—'])]));
+    }
+    for (const t of sec.timed) {
+      const stt = st.timed[t.id];
+      rows.push(el('tr', {}, [el('td', {}, [t.label + ' (seconds)']), el('td', { style: 'width:34%' }, [stt.sec != null ? stt.sec + 's' : '—'])]));
+      rows.push(el('tr', {}, [el('td', { style: 'padding-left:18px;color:var(--muted)' }, ['  Rating']), el('td', {}, [stt.rating ? '★ ' + PACE_RATING_LABEL[stt.rating] : '—'])]));
+    }
+    if (st.notes) rows.push(el('tr', {}, [el('td', { colspan: 2 }, ['<em>' + esc(st.notes) + '</em>'])]));
+    report.appendChild(el('div', { class: 'rsec' }, [
+      el('h3', {}, [sec.num + '. ' + sec.title]),
+      el('table', { class: 'rtbl' }, rows),
+    ]));
+  }
+
+  if (r.overallNotes) {
+    report.appendChild(el('div', { class: 'rsec' }, [
+      el('h3', {}, ['Overall Notes / Coaching Points']),
+      el('p', {}, [esc(r.overallNotes)]),
+    ]));
+  }
+
+  report.appendChild(el('div', { class: 'pace-rfoot' }, [
+    el('div', { class: 'sigbox' + (r.evaluatorSig ? '' : ' ns') }, [
+      r.evaluatorSig ? el('img', { src: r.evaluatorSig, alt: 'evaluator signature' }) : null,
+      'Evaluator Signature',
+    ]),
+    el('div', { class: 'sigbox' + (r.employeeSig ? '' : ' ns') }, [
+      r.employeeSig ? el('img', { src: r.employeeSig, alt: 'employee signature' }) : null,
+      'Employee Signature',
+    ]),
+  ]));
+
+  report.appendChild(el('div', { class: 'pace-rfoot' }, [
+    el('span', {}, ['Next PACE Drive: ' + (r.nextPaceDate || '—')]),
+    el('span', {}, ['Review Date: ' + (r.reviewDate || '—')]),
+  ]));
+
+  view.appendChild(report);
+}
+
 /* ============================== Boot ============================== */
 
 function registerSW() {
@@ -1582,6 +2126,11 @@ window.addEventListener('beforeunload', () => {
   if (cur && cur.driverName && evals.findIndex((r) => r.id === cur.id) === -1) {
     evals.push(JSON.parse(JSON.stringify(cur)));
     persist(EVALS_DB, EVALS_KEY, evals);
+  }
+  const p = state.pace.current;
+  if (p && p.evaluator && paceEvals.findIndex((r) => r.id === p.id) === -1) {
+    paceEvals.push(JSON.parse(JSON.stringify(p)));
+    persist(PACE_DB, PACE_KEY, paceEvals);
   }
 });
 

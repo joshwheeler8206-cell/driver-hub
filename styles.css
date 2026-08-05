@@ -397,6 +397,59 @@ textarea.notes { resize: vertical; min-height: 44px; }
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* ---------- PACE form ---------- */
+.rate.r1.on { background: #fee2e2; border-color: var(--red); color: var(--red); }
+.rate.r2.on { background: #fef3c7; border-color: var(--amber); color: var(--amber); }
+.rate.r3.on { background: #dcfce7; border-color: var(--green); color: var(--green); }
+.pace-legend { display: flex; flex-wrap: wrap; gap: 10px 16px; font-size: 12px; color: var(--muted); }
+.pace-legend .l1 { font-weight: 700; color: var(--red); }
+.pace-legend .l2 { font-weight: 700; color: var(--amber); }
+.pace-legend .l3 { font-weight: 700; color: var(--green); }
+
+.item.timed { flex-direction: column; background: #fafafa; border: 1px solid var(--line); border-radius: 12px; padding: 10px; margin-top: 6px; }
+.timed-main { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; }
+.timed-main .item-label { flex: 1; font-weight: 600; }
+.timed-read {
+  font-size: 20px; font-weight: 800; color: var(--green);
+  font-variant-numeric: tabular-nums; min-width: 72px; text-align: right;
+}
+.timed-read.running { color: var(--red); }
+.timer-btn {
+  border: 1.5px solid var(--green); background: #fff; color: var(--green);
+  padding: 9px 16px; border-radius: 10px; font-weight: 700; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.timer-btn.running { background: var(--red); border-color: var(--red); color: #fff; }
+.timer-btn:active { opacity: .85; }
+.timed-foot { display: flex; align-items: flex-end; gap: 10px; width: 100%; margin-top: 6px; }
+.timed-sec { flex: 1; }
+.timed-sec input { padding: 9px 10px; }
+.timed-note { font-size: 11px; color: var(--muted); margin: 4px 0 0; line-height: 1.35; }
+
+.pace-toggle-row { display: flex; gap: 8px; margin: 2px 0 10px; flex-wrap: wrap; }
+.pace-toggle {
+  flex: 1; min-width: 120px; padding: 10px 12px; border-radius: 10px;
+  border: 1.5px solid var(--line); background: #fff; font-size: 13px; font-weight: 700;
+  color: var(--muted); cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.pace-toggle.on { background: #dcfce7; border-color: var(--green); color: var(--green); }
+
+/* ---------- PACE report ---------- */
+.backbar { display: flex; gap: 8px; margin-bottom: 12px; }
+.backbar .btn { flex: 0 0 auto; }
+.pace-report { max-width: 640px; margin: 0 auto; }
+.pace-report h2 { margin: 0 0 2px; }
+.rsub { font-size: 12.5px; color: var(--muted); margin: 0 0 12px; }
+.rtbl { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+.rtbl th, .rtbl td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); font-size: 13.5px; vertical-align: top; }
+.rsec { margin-bottom: 12px; }
+.rsec h3 { margin: 0 0 6px; font-size: 14px; color: #0f766e; }
+.rsec p { margin: 0; font-size: 13.5px; }
+.pace-rfoot { display: flex; justify-content: space-between; gap: 12px; margin-top: 14px; font-size: 13px; flex-wrap: wrap; }
+.pace-rfoot .sigbox { flex: 1; min-width: 150px; border-top: 1.5px solid var(--line); padding-top: 6px; font-size: 12px; color: var(--muted); }
+.pace-rfoot .sigbox img { display: block; width: 100%; max-height: 90px; object-fit: contain; margin-bottom: 4px; }
+.pace-rfoot .sigbox.ns { border-top-style: dashed; }
+
 /* ---------- Print ---------- */
 @media print {
   .tabbar, .app-header, .toast, .actions, .btn { display: none !important; }
