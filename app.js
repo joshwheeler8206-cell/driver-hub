@@ -56,6 +56,18 @@ function download(filename, text) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
+function downloadCsv(filename, rows) {
+  const csv = rows.map((r) => r.map((v) => {
+    const s = String(v == null ? '' : v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }).join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = el('a', { href: url, download: filename });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
 function quarterOf(isoDate) {
   const d = isoDate ? new Date(isoDate + 'T00:00:00') : new Date();
   if (isNaN(d)) return 'Unknown';
@@ -285,6 +297,20 @@ function renderHome() {
     ]),
   ]));
 
+  view.appendChild(el('div', { class: 'card' }, [
+    el('h2', { class: 'card-title' }, ['Data & Reports']),
+    el('div', { class: 'actions' }, [
+      el('button', { class: 'btn primary', onclick: () => exportAllData() }, ['📦 Backup All (JSON)']),
+      el('button', { class: 'btn', onclick: () => openDossier() }, ['👤 Driver Dossier']),
+    ]),
+    el('div', { class: 'actions', style: 'margin-top:8px' }, [
+      el('button', { class: 'btn small', onclick: () => exportEvalsCsv() }, ['Reviews CSV']),
+      el('button', { class: 'btn small', onclick: () => exportCertsCsv() }, ['Certs CSV']),
+      el('button', { class: 'btn small', onclick: () => exportTrainCsv() }, ['Training CSV']),
+      el('button', { class: 'btn small', onclick: () => exportPaceCsv() }, ['PACE CSV']),
+    ]),
+  ]));
+
   if (!evals.length && !trainees.length && !drivers.length) {
     view.appendChild(el('div', { class: 'empty' }, [
       el('div', { class: 'big' }, ['🚚']),
@@ -292,20 +318,65 @@ function renderHome() {
       'Everything in one place: quarterly ride-along reviews, new-hire training sign-offs, and certification expirations. Add your first record above.',
     ]));
   } else {
-    // Alerts panel
-    const alerts = [];
-    for (const { driver, cert } of allCerts) {
-      const st = certStatus(cert);
-      if (st === 'expired' || st === 'critical') alerts.push(cert.label + ' · ' + (driver.name || 'driver') + ' · ' + daysText(cert));
-    }
-    const noRelease = trainees.filter((t) => !t.milestones || !t.milestones['Released / sign-off'].date);
-    if (alerts.length || noRelease.length) {
-      const list = el('div', { class: 'card' }, [el('h2', { class: 'card-title' }, ['Needs Attention'])]);
-      for (const a of alerts.slice(0, 5)) list.appendChild(el('div', { class: 'rec-meta', style: 'padding:5px 0;color:var(--red);font-weight:600' }, ['• ' + a]));
-      if (noRelease.length) list.appendChild(el('div', { class: 'rec-meta', style: 'padding:5px 0' }, ['• ' + noRelease.length + ' trainee(s) not yet released']));
-      view.appendChild(list);
+    renderAttentionInbox(view);
+  }
+}
+
+function renderAttentionInbox(view) {
+  const items = [];
+
+  const allCerts = [];
+  for (const d of drivers) for (const c of d.certs) allCerts.push({ driver: d, cert: c });
+  for (const { driver, cert } of allCerts) {
+    const st = certStatus(cert);
+    if (st === 'expired' || st === 'critical' || st === 'warning') {
+      items.push({
+        icon: '🪪', title: (driver.name || 'driver') + ' — ' + cert.label,
+        sub: CERT_STATUS_META[st].label + ' · ' + daysText(cert),
+        cls: st === 'expired' ? 'danger' : st === 'critical' ? 'warn' : 'mild',
+        go: () => { switchTab('certs'); openCertDriver(driver.id); },
+      });
     }
   }
+
+  const pacedue = paceEvals.filter((p) => p.nextPaceDate && p.nextPaceDate <= todayISO());
+  for (const p of pacedue) {
+    items.push({
+      icon: '⏱️', title: (p.driver || p.evaluator || 'driver') + ' — PACE drive due',
+      sub: 'Next PACE was ' + p.nextPaceDate,
+      cls: 'warn',
+      go: () => { switchTab('pace'); renderPaceSub('records'); },
+    });
+  }
+
+  const active = trainees.filter((t) => !t.milestones || !t.milestones['Released / sign-off'].date);
+  for (const t of active) {
+    const p = trainProgressOf(t);
+    items.push({
+      icon: '🎓', title: t.name + ' — ' + p.pct + '% trained',
+      sub: trainStatusOf(t).replace('-', ' ') + (t.trainer ? ' · Trainer: ' + t.trainer : ''),
+      cls: p.pct >= 80 ? 'mild' : '',
+      go: () => { switchTab('training'); openTrainee(t.id); },
+    });
+  }
+
+  if (!items.length) {
+    view.appendChild(el('div', { class: 'card' }, [
+      el('h2', { class: 'card-title' }, ['Needs Attention']),
+      el('div', { class: 'sc-clean' }, ['All clear — no expiring certs, overdue PACE drives, or incomplete training.']),
+    ]));
+    return;
+  }
+
+  const list = el('div', { class: 'card' }, [el('h2', { class: 'card-title' }, ['Needs Attention (' + items.length + ')'])]);
+  for (const it of items) {
+    list.appendChild(el('button', { class: 'attn ' + it.cls, onclick: it.go }, [
+      el('span', { class: 'attn-icon' }, [it.icon]),
+      el('span', { class: 'attn-body' }, [el('span', { class: 'attn-title' }, [it.title]), el('span', { class: 'attn-sub' }, [it.sub])]),
+      el('span', { class: 'attn-arrow' }, ['›']),
+    ]));
+  }
+  view.appendChild(list);
 }
 
 function dashCard(icon, title, num, sub, onclick) {
@@ -315,6 +386,229 @@ function dashCard(icon, title, num, sub, onclick) {
     el('div', { class: 'dash-num' }, [num]),
     el('div', { class: 'dash-sub' }, [sub]),
   ]);
+}
+
+/* ============================== Data & Reports ============================== */
+
+function exportAllData() {
+  download('driver-hub-backup-' + todayISO() + '.json', JSON.stringify({
+    app: 'driver-hub',
+    exported: new Date().toISOString(),
+    version: 1,
+    evals, trainees, drivers, paceEvals,
+  }, null, 2));
+}
+
+function exportEvalsCsv() {
+  if (!evals.length) { toast('No reviews yet.'); return; }
+  const rows = [['Driver', 'Driver ID', 'Date', 'Assessor', 'Area', 'Item', 'Rating', 'Area Notes', 'Overall Notes']];
+  for (const r of evals) {
+    for (const a of REVIEW_CHECKLIST) {
+      const st = r.areas[a.id] || {};
+      for (const it of a.items) {
+        rows.push([r.driverName, r.driverId, r.evalDate, r.assessor, a.num + '. ' + a.title, it, st.items[it] || '', st.notes || '', r.overallNotes || '']);
+      }
+    }
+  }
+  downloadCsv('quarterly-reviews-' + todayISO() + '.csv', rows);
+}
+
+function exportCertsCsv() {
+  if (!drivers.length) { toast('No certs yet.'); return; }
+  const rows = [['Driver', 'Driver ID', 'Cert', 'Expiry', 'Days Left', 'Status', 'Notes']];
+  for (const d of drivers) for (const c of d.certs) {
+    const st = certStatus(c);
+    rows.push([d.name, d.driverId, c.label, c.expiry, certDaysLeft(c) ?? '', CERT_STATUS_META[st].label, c.notes]);
+  }
+  downloadCsv('cert-tracker-' + todayISO() + '.csv', rows);
+}
+
+function exportTrainCsv() {
+  if (!trainees.length) { toast('No trainees yet.'); return; }
+  const rows = [['Trainee', 'Hire Date', 'Trainer', 'Status', 'Progress %', 'Topics Done', 'Milestones Done', 'Notes']];
+  for (const tr of trainees) {
+    const p = trainProgressOf(tr);
+    const topicsDone = Object.values(tr.topics || {}).filter((t) => t && t.date).length;
+    const milesDone = Object.values(tr.milestones || {}).filter((m) => m && m.date).length;
+    rows.push([tr.name, tr.hireDate, tr.trainer, trainStatusOf(tr).replace('-', ' '), p.pct, topicsDone, milesDone, tr.notes || '']);
+  }
+  downloadCsv('training-tracker-' + todayISO() + '.csv', rows);
+}
+
+function exportPaceCsv() {
+  if (!paceEvals.length) { toast('No PACE evals yet.'); return; }
+  const rows = [['Driver', 'Date', 'Evaluator', 'Lic #', 'Result', 'NP Count', 'Rated', 'Always Practiced %', 'Eye Lead (s)', 'Mirror (s)', 'Following (s)', 'Next PACE', 'Notes']];
+  for (const r of paceEvals) {
+    const low = countPaceLow(r);
+    const rated = countPaceRated(r);
+    const r3 = countPace3(r);
+    rows.push([
+      r.driver, r.date, r.evaluator, r.lic,
+      r.training === 'completed' ? 'Training Completed' : r.training === 'continued' ? 'Continued Training' : '',
+      low, rated,
+      rated ? Math.round((r3 / rated) * 100) : '',
+      timedAvg(r, 'eye'), timedAvg(r, 'mirror'), timedAvg(r, 'following'),
+      r.nextPaceDate, r.overallNotes || '',
+    ]);
+  }
+  downloadCsv('pace-evaluations-' + todayISO() + '.csv', rows);
+}
+
+function countPace3(ev) {
+  let n = 0;
+  for (const s of PACE_SECTIONS) {
+    for (const it of s.items) if (ev.sections[s.id].ratings[it] === 3) n++;
+    for (const t of s.timed) if (ev.sections[s.id].timed[t.id].rating === 3) n++;
+  }
+  return n;
+}
+
+function timedAvg(ev, id) {
+  for (const s of PACE_SECTIONS) {
+    for (const t of s.timed) {
+      if (t.id === id) {
+        const st = ev.sections[s.id].timed[id];
+        return st && st.sec != null ? st.sec : '';
+      }
+    }
+  }
+  return '';
+}
+
+function driverNames() {
+  const names = new Set();
+  for (const r of evals) if (r.driverName) names.add(r.driverName);
+  for (const t of trainees) if (t.name) names.add(t.name);
+  for (const d of drivers) if (d.name) names.add(d.name);
+  for (const p of paceEvals) if (p.driver) names.add(p.driver);
+  return [...names].sort();
+}
+
+function openDossier() {
+  const names = driverNames();
+  if (!names.length) { toast('No driver records yet.'); return; }
+  switchTab('home');
+  const view = document.getElementById('view');
+  view.innerHTML = '';
+  view.appendChild(el('div', { class: 'page-head' }, [el('h2', { class: 'page-title' }, ['Driver Dossier'])]));
+  const selWrap = el('div', { class: 'sc-sel' });
+  const sel = el('select', { onchange: (e) => renderDossierFor(e.target.value) });
+  for (const n of names) sel.appendChild(el('option', { value: n }, [n]));
+  selWrap.appendChild(sel);
+  view.appendChild(selWrap);
+  const body = el('div');
+  view.appendChild(body);
+  renderDossierFor(names[0], body);
+}
+
+function dossierRowsFor(name) {
+  const reviews = evals.filter((r) => r.driverName === name).sort((a, b) => (b.evalDate || '').localeCompare(a.evalDate || ''));
+  const certs = [];
+  for (const d of drivers) if (d.name === name) for (const c of d.certs) certs.push(c);
+  const train = trainees.filter((t) => t.name === name);
+  const pace = paceEvals.filter((p) => p.driver === name).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  return { reviews, certs, train, pace };
+}
+
+function renderDossierFor(name, body) {
+  body.innerHTML = '';
+  const { reviews, certs, train, pace } = dossierRowsFor(name);
+  const st = driverStats(name);
+
+  body.appendChild(el('div', { class: 'backbar' }, [
+    el('button', { class: 'btn primary', onclick: () => window.print() }, ['🖨️ Print / Save PDF']),
+  ]));
+
+  const report = el('div', { class: 'pace-report' }, []);
+  report.appendChild(el('h2', {}, ['Driver Dossier']));
+  report.appendChild(el('p', { class: 'rsub' }, [name + ' · U.S. AutoForce · Generated ' + new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })]));
+
+  const sec = (title) => el('div', { class: 'rsec' }, [el('h3', {}, [title])]);
+
+  const revSec = sec('Quarterly Reviews (' + reviews.length + ')');
+  if (!reviews.length) revSec.appendChild(el('p', { class: 'rsub' }, ['No reviews on file.']));
+  else {
+    const tbl = el('table', { class: 'rtbl' });
+    const head = el('tr', {});
+    for (const h of ['Date', 'Assessor', 'SAT %', 'NI Items', 'Notes']) head.appendChild(el('th', {}, [h]));
+    tbl.appendChild(head);
+    for (const r of reviews) {
+      const rs = driverStats(r.driverName);
+      const ni = countNI(r);
+      tbl.appendChild(el('tr', {}, [
+        el('td', {}, [r.evalDate || '—']),
+        el('td', {}, [r.assessor || '—']),
+        el('td', {}, [rs.rated ? rs.pct + '%' : '—']),
+        el('td', {}, [String(ni)]),
+        el('td', {}, [r.overallNotes || '—']),
+      ]));
+    }
+    revSec.appendChild(tbl);
+  }
+  report.appendChild(revSec);
+
+  const trainSec = sec('New-Hire Training (' + train.length + ')');
+  if (!train.length) trainSec.appendChild(el('p', { class: 'rsub' }, ['No training record on file.']));
+  else for (const tr of train) {
+    const p = trainProgressOf(tr);
+    trainSec.appendChild(el('p', {}, [
+      '<strong>Status:</strong> ' + trainStatusOf(tr).replace('-', ' ') + ' · ' + p.pct + '% complete' +
+      (tr.hireDate ? ' · Hired ' + tr.hireDate : '') + (tr.trainer ? ' · Trainer ' + tr.trainer : ''),
+    ]));
+    const topicsDone = Object.values(tr.topics || {}).filter((t) => t && t.date).map((t) => t.date).join(', ');
+    const milesDone = Object.values(tr.milestones || {}).filter((m) => m && m.date);
+    trainSec.appendChild(el('p', { class: 'rsub' }, ['Completed topics: ' + (topicsDone || 'none yet')]));
+    if (milesDone.length) trainSec.appendChild(el('p', { class: 'rsub' }, ['Milestones reached: ' + milesDone.map((m) => m.date).join(', ')]));
+    if (tr.notes) trainSec.appendChild(el('p', { class: 'rsub' }, ['Trainer notes: ' + tr.notes]));
+  }
+  report.appendChild(trainSec);
+
+  const certSec = sec('Certifications (' + certs.length + ')');
+  if (!certs.length) certSec.appendChild(el('p', { class: 'rsub' }, ['No certs on file.']));
+  else {
+    const tbl = el('table', { class: 'rtbl' });
+    const head = el('tr', {});
+    for (const h of ['Cert', 'Expiry', 'Status']) head.appendChild(el('th', {}, [h]));
+    tbl.appendChild(head);
+    for (const c of certs) {
+      const cm = CERT_STATUS_META[certStatus(c)];
+      tbl.appendChild(el('tr', {}, [el('td', {}, [c.label]), el('td', {}, [c.expiry || '—']), el('td', {}, [cm.label + ' (' + daysText(c) + ')'])]));
+    }
+    certSec.appendChild(tbl);
+  }
+  report.appendChild(certSec);
+
+  const paceSec = sec('PACE Evaluations (' + pace.length + ')');
+  if (!pace.length) paceSec.appendChild(el('p', { class: 'rsub' }, ['No PACE evals on file.']));
+  else {
+    const tbl = el('table', { class: 'rtbl' });
+    const head = el('tr', {});
+    for (const h of ['Date', 'Evaluator', 'Result', 'NP', 'Next PACE']) head.appendChild(el('th', {}, [h]));
+    tbl.appendChild(head);
+    for (const r of pace) {
+      tbl.appendChild(el('tr', {}, [
+        el('td', {}, [r.date || '—']),
+        el('td', {}, [r.evaluator || '—']),
+        el('td', {}, [r.training === 'completed' ? 'Completed' : r.training === 'continued' ? 'Continued' : '—']),
+        el('td', {}, [String(countPaceLow(r))]),
+        el('td', {}, [r.nextPaceDate || '—']),
+      ]));
+    }
+    paceSec.appendChild(tbl);
+    if (pace.some((r) => r.overallNotes)) {
+      const notes = pace.filter((r) => r.overallNotes).map((r) => (r.date || '') + ': ' + r.overallNotes).join(' | ');
+      paceSec.appendChild(el('p', { class: 'rsub' }, ['Coaching notes: ' + notes]));
+    }
+  }
+  report.appendChild(paceSec);
+
+  report.appendChild(el('div', { class: 'pace-rfoot' }, [
+    el('div', { class: 'sigbox ns' }, ['Prepared By Signature']),
+    el('div', { class: 'sigbox ns' }, ['Driver Signature']),
+    el('div', { class: 'sigbox ns' }, ['Date']),
+  ]));
+
+  body.appendChild(report);
 }
 
 /* ================================================================
@@ -1718,7 +2012,7 @@ function renderPaceTab() {
 }
 
 function paceSubtabs() {
-  const items = [['new', 'New PACE'], ['records', 'Records']];
+  const items = [['new', 'New PACE'], ['records', 'Records'], ['stats', 'Stats & Trends']];
   return el('div', { class: 'subtabs' }, items.map(([key, label]) =>
     el('button', { class: 'subtab' + (state.pace.sub === key ? ' active' : ''), onclick: () => renderPaceSub(key) }, [label])
   ));
@@ -1730,6 +2024,7 @@ function renderPaceSub(sub) {
   view.innerHTML = '';
   view.appendChild(paceSubtabs());
   if (sub === 'records') renderPaceRecordsInto(view);
+  else if (sub === 'stats') renderPaceStatsInto(view);
   else renderPaceFormInto(view);
 }
 
@@ -2086,6 +2381,157 @@ function exportPaceOne(r) {
 function exportPaceAll() {
   if (!paceEvals.length) { toast('Nothing to export yet.'); return; }
   download('pace-evaluations-' + todayISO() + '.json', JSON.stringify(paceEvals, null, 2));
+}
+
+function paceStatsFor(name) {
+  const evs = paceEvals.filter((p) => p.driver === name).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  const perSec = {};
+  const focus = {};
+  const timedSum = { eye: { n: 0, s: 0 }, mirror: { n: 0, s: 0 }, following: { n: 0, s: 0 } };
+  const series = [];
+  let ratedCount = 0, avgRatingSum = 0, lowTotal = 0;
+
+  for (const r of evs) {
+    let rated = 0, r3 = 0, sum = 0;
+    for (const s of PACE_SECTIONS) {
+      const st = r.sections[s.id];
+      for (const it of s.items) {
+        const v = st.ratings[it];
+        if (!v) continue;
+        rated++; sum += v;
+        if (v === 3) r3++; else if (v === 1) focus[it] = (focus[it] || 0) + 1;
+        if (!perSec[s.id]) perSec[s.id] = { sum: 0, n: 0 };
+        perSec[s.id].sum += v; perSec[s.id].n++;
+      }
+      for (const t of s.timed) {
+        const td = st.timed[t.id];
+        if (td && td.rating) {
+          rated++; sum += td.rating;
+          if (td.rating === 3) r3++; else if (td.rating === 1) focus[t.label] = (focus[t.label] || 0) + 1;
+          if (!perSec[s.id]) perSec[s.id] = { sum: 0, n: 0 };
+          perSec[s.id].sum += td.rating; perSec[s.id].n++;
+        }
+        if (td && td.sec != null && timedSum[t.id]) {
+          timedSum[t.id].n++; timedSum[t.id].s += td.sec;
+        }
+      }
+    }
+    if (rated) {
+      ratedCount++;
+      avgRatingSum += sum / rated;
+      lowTotal += countPaceLow(r);
+      series.push({ label: r.date || '?', pct: Math.round((r3 / rated) * 100) });
+    }
+  }
+
+  return {
+    evs, series, lowTotal,
+    avgPct: ratedCount ? Math.round(series.reduce((a, s) => a + s.pct, 0) / ratedCount) : null,
+    avgRating: ratedCount ? avgRatingSum / ratedCount : null,
+    perSec, focus,
+    timedAvg: {
+      eye: timedSum.eye.n ? timedSum.eye.s / timedSum.eye.n : null,
+      mirror: timedSum.mirror.n ? timedSum.mirror.s / timedSum.mirror.n : null,
+      following: timedSum.following.n ? timedSum.following.s / timedSum.following.n : null,
+    },
+  };
+}
+
+function paceTrendSvg(series) {
+  const W = 320, H = 130, padL = 26, padR = 8, padT = 10, padB = 22;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const n = series.length;
+  const x = (i) => padL + (n === 1 ? iw / 2 : (iw * i) / (n - 1));
+  const y = (pct) => padT + ih - (pct / 100) * ih;
+  let grid = '';
+  for (const g of [0, 50, 100]) grid += '<line x1="' + padL + '" y1="' + y(g).toFixed(1) + '" x2="' + (W - padR) + '" y2="' + y(g).toFixed(1) + '" stroke="#e5e7eb" stroke-width="1"/>';
+  const pts = series.map((s, i) => x(i).toFixed(1) + ',' + y(s.pct).toFixed(1));
+  let extras = '';
+  series.forEach((s, i) => {
+    const cx = x(i).toFixed(1), cy = y(s.pct).toFixed(1);
+    extras += '<circle cx="' + cx + '" cy="' + cy + '" r="3.2" fill="#0f766e"/>' +
+      '<text x="' + cx + '" y="' + (H - 8) + '" text-anchor="middle" font-size="10" fill="#6b7280">' + esc(s.label.slice(5)) + '</text>';
+  });
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">' + grid +
+    '<polyline points="' + pts.join(' ') + '" fill="none" stroke="#0f766e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+    extras + '</svg>';
+}
+
+function renderPaceStatsInto(view) {
+  const drivers = [...new Set(paceEvals.map((p) => p.driver).filter(Boolean))].sort();
+  view.appendChild(el('div', { class: 'page-head' }, [el('h2', { class: 'page-title' }, ['PACE Stats & Trends'])]));
+  if (!drivers.length) {
+    view.appendChild(el('div', { class: 'empty' }, ['No PACE evaluations yet. Complete drives to see stats.']));
+    return;
+  }
+  const selWrap = el('div', { class: 'sc-sel' });
+  const sel = el('select', { onchange: (e) => renderPaceStatsFor(e.target.value, body) });
+  for (const d of drivers) sel.appendChild(el('option', { value: d }, [d]));
+  selWrap.appendChild(sel);
+  view.appendChild(selWrap);
+  const body = el('div');
+  view.appendChild(body);
+  renderPaceStatsFor(drivers[0], body);
+}
+
+function renderPaceStatsFor(name, body) {
+  body.innerHTML = '';
+  const st = paceStatsFor(name);
+  if (!st.evs.length) {
+    body.appendChild(el('div', { class: 'empty' }, ['No PACE evaluations for this driver yet.']));
+    return;
+  }
+
+  body.appendChild(el('div', { class: 'sc-summary' }, [
+    el('div', { class: 'sc-stat' }, [el('strong', {}, [st.avgPct + '%']), el('span', {}, ['always practiced'])]),
+    el('div', { class: 'sc-stat' }, [el('strong', {}, [String(st.evs.length)]), el('span', {}, ['drives'])]),
+    el('div', { class: 'sc-stat' }, [el('strong', {}, [st.avgRating ? st.avgRating.toFixed(1) : '—']), el('span', {}, ['avg rating (1–3)'])]),
+    el('div', { class: 'sc-stat' }, [el('strong', {}, [String(st.lowTotal)]), el('span', {}, ['not-practiced'])]),
+  ]));
+
+  if (st.series.length) {
+    body.appendChild(el('div', { class: 'card sc-chart' }, [
+      el('h3', {}, ['Always Practiced % by Drive']),
+      el('div', { html: paceTrendSvg(st.series) }),
+      el('div', { class: 'sc-chart-note' }, ['Share of items rated "Always Practiced" per evaluation.']),
+    ]));
+  }
+
+  const bars = el('div', { class: 'card' }, [el('h3', {}, ['Performance by Section'])]);
+  for (const s of PACE_SECTIONS) {
+    const d = st.perSec[s.id];
+    const avg = d && d.n ? d.sum / d.n : null;
+    const pct = avg ? Math.min(100, (avg / 3) * 100) : 0;
+    bars.appendChild(el('div', { class: 'bar-row' }, [
+      el('div', { class: 'bar-label' }, [s.title]),
+      el('div', { class: 'bar-track' }, [el('div', { class: 'bar-fill', style: 'width:' + pct.toFixed(0) + '%' }, [])]),
+      el('div', { class: 'bar-val' }, [avg ? avg.toFixed(1) : '—']),
+    ]));
+  }
+  body.appendChild(bars);
+
+  const timed = [];
+  for (const [id, label] of [['eye', 'Eye Lead Time'], ['mirror', 'Mirror Check Intervals'], ['following', 'Following Distance']]) {
+    const v = st.timedAvg[id];
+    if (v != null) timed.push(el('div', { class: 'sc-stat' }, [el('strong', {}, [v.toFixed(1) + 's']), el('span', {}, [label])]));
+  }
+  if (timed.length) {
+    body.appendChild(el('div', { class: 'card' }, [
+      el('h3', {}, ['Timed Averages']),
+      el('div', { class: 'sc-summary' }, timed),
+      el('div', { class: 'sc-chart-note' }, ['Eye lead: 10–15s is strong · Mirrors: every 5–8s · Following: 4+s.']),
+    ]));
+  }
+
+  const focusList = Object.entries(st.focus).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  if (focusList.length) {
+    const list = el('div', { class: 'card' }, [el('h3', {}, ['Coaching Focus Areas'])]);
+    for (const [item, count] of focusList) {
+      list.appendChild(el('div', { class: 'rec-meta', style: 'padding:5px 0;color:var(--red);font-weight:600' }, ['• ' + item + ' — not practiced ' + count + '×']));
+    }
+    list.appendChild(el('div', { class: 'sc-chart-note' }, ['Items most frequently rated 1 — worth targeting in coaching.']));
+    body.appendChild(list);
+  }
 }
 
 function openPaceReport(id) {
