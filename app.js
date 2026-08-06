@@ -96,6 +96,8 @@ const CERTS_DB = 'usaf_cert_tracker_db';
 const CERTS_KEY = 'usaf_cert_tracker_v1';
 const PACE_DB = 'usaf_pace_eval_db';
 const PACE_KEY = 'usaf_pace_evals_v1';
+const ROUTES_DB = 'usaf_route_notes_db';
+const ROUTES_KEY = 'usaf_route_notes_v1';
 
 const canIdb = typeof indexedDB !== 'undefined';
 const _dbCache = {};
@@ -153,6 +155,7 @@ let evals = [];
 let trainees = [];
 let drivers = [];
 let paceEvals = [];
+let routes = [];
 
 async function initStorage() {
   if (!canIdb) {
@@ -160,12 +163,14 @@ async function initStorage() {
     trainees = JSON.parse(localStorage.getItem(TRAIN_DB + ':' + TRAIN_KEY) || '[]') || [];
     drivers = JSON.parse(localStorage.getItem(CERTS_DB + ':' + CERTS_KEY) || '[]') || [];
     paceEvals = JSON.parse(localStorage.getItem(PACE_DB + ':' + PACE_KEY) || '[]') || [];
+    routes = JSON.parse(localStorage.getItem(ROUTES_DB + ':' + ROUTES_KEY) || '[]') || [];
     return;
   }
   evals = (await idbGet(EVALS_DB, EVALS_KEY)) || [];
   trainees = (await idbGet(TRAIN_DB, TRAIN_KEY)) || [];
   drivers = (await idbGet(CERTS_DB, CERTS_KEY)) || [];
   paceEvals = (await idbGet(PACE_DB, PACE_KEY)) || [];
+  routes = (await idbGet(ROUTES_DB, ROUTES_KEY)) || [];
   // migrate from legacy localStorage of the standalone apps
   try {
     const legacyE = JSON.parse(localStorage.getItem(EVALS_KEY));
@@ -183,6 +188,10 @@ async function initStorage() {
     const legacyP = JSON.parse(localStorage.getItem(PACE_KEY));
     if (legacyP && legacyP.length && !paceEvals.length) { paceEvals = legacyP; await persist(PACE_DB, PACE_KEY, paceEvals); }
   } catch (e) {}
+  try {
+    const legacyR = JSON.parse(localStorage.getItem(ROUTES_KEY));
+    if (legacyR && legacyR.length && !routes.length) { routes = legacyR; await persist(ROUTES_DB, ROUTES_KEY, routes); }
+  } catch (e) {}
 }
 
 /* ============================== Router ============================== */
@@ -193,6 +202,7 @@ const state = {
   pace: { sub: 'new', current: null },
   training: { view: 'trainees', currentId: null },
   certs: { driverId: null },
+  routes: { sub: 'new', currentId: null },
 };
 
 function setAccent(color) {
@@ -207,6 +217,7 @@ function renderTab(name) {
   else if (name === 'pace') renderPaceTab();
   else if (name === 'training') renderTrainingTab();
   else if (name === 'certs') renderCertsTab();
+  else if (name === 'routes') renderRoutesTab();
   document.getElementById('view').scrollTop = 0;
   window.scrollTo(0, 0);
 }
@@ -269,6 +280,8 @@ function renderHome() {
   const latestPace = paceEvals.slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
   const pacesDue = paceEvals.filter((p) => p.nextPaceDate && p.nextPaceDate <= todayISO()).length;
 
+  const latestRoute = routes.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
+
   const grid = el('div', { class: 'dash-grid' }, [
     dashCard('📋', 'Quarterly Reviews', String(evals.length),
       latestEval ? 'Last: ' + latestEval.driverName + ' · ' + latestEval.evalDate : 'No reviews yet',
@@ -285,6 +298,9 @@ function renderHome() {
     dashCard('🗓️', 'Reviews This Year', String(evalsThisYear),
       quarterOf(todayISO()) + ' · ' + quarterKey(todayISO()),
       () => switchTab('review')),
+    dashCard('🗺️', 'Route Notes', String(routes.length),
+      latestRoute ? 'Last: ' + latestRoute.name + ' · ' + (latestRoute.routeDate || 'no date') : 'No routes yet',
+      () => switchTab('routes')),
   ]);
   view.appendChild(grid);
 
@@ -298,6 +314,7 @@ function renderHome() {
     el('div', { class: 'actions', style: 'margin-top:8px' }, [
       el('button', { class: 'btn', onclick: () => { switchTab('training'); addTrainee(); } }, ['+ Add Trainee']),
       el('button', { class: 'btn', onclick: () => { switchTab('certs'); addDriver(); } }, ['+ Add Driver Cert']),
+      el('button', { class: 'btn', onclick: () => { state.routes.sub = 'new'; switchTab('routes'); } }, ['+ New Route']),
     ]),
   ]));
 
@@ -312,6 +329,7 @@ function renderHome() {
       el('button', { class: 'btn small', onclick: () => exportCertsCsv() }, ['Certs CSV']),
       el('button', { class: 'btn small', onclick: () => exportTrainCsv() }, ['Training CSV']),
       el('button', { class: 'btn small', onclick: () => exportPaceCsv() }, ['PACE CSV']),
+      el('button', { class: 'btn small', onclick: () => exportRoutesCsv() }, ['Routes CSV']),
     ]),
   ]));
 
@@ -319,7 +337,7 @@ function renderHome() {
     view.appendChild(el('div', { class: 'empty' }, [
       el('div', { class: 'big' }, ['🚚']),
       el('div', { class: 'title' }, ['Welcome to the Driver Hub']),
-      'Everything in one place: quarterly ride-along reviews, new-hire training sign-offs, and certification expirations. Add your first record above.',
+      'Everything in one place: quarterly ride-along reviews, new-hire training sign-offs, certification expirations, and daily route notes. Add your first record above.',
     ]));
   } else {
     renderAttentionInbox(view);
@@ -399,7 +417,7 @@ function exportAllData() {
     app: 'driver-hub',
     exported: new Date().toISOString(),
     version: 1,
-    evals, trainees, drivers, paceEvals,
+    evals, trainees, drivers, paceEvals, routes,
   }, null, 2));
 }
 
@@ -1915,6 +1933,287 @@ function certPrintHtml() {
     '<div class="sig"><div>TRAINER / SUPERVISOR SIGNATURE</div><div>DATE</div></div>' +
     '<div class="foot">Flag legend: EXPIRED = must renew before driving &bull; CRITICAL = expires within ' + REMIND.critical + ' days &bull; WARNING = expires within ' + REMIND.warning + ' days &bull; OK = valid. U.S. AutoForce &bull; Confidential</div>' +
     '</body></html>';
+}
+
+/* ================================================================
+   ROUTE NOTES MODULE - shared with route-notes app
+   ================================================================ */
+
+function newRoute(name, stops) {
+  return {
+    id: uid(),
+    name: name || 'Untitled Route',
+    createdAt: new Date().toISOString(),
+    routeDate: todayISO(),
+    stops: stops || [],
+  };
+}
+
+function makeStop(name, cod, instructions) {
+  return { name: name || '', cod: !!cod, instructions: instructions || '', notes: '' };
+}
+
+function currentRoute() {
+  return routes.find((r) => r.id === state.routes.currentId) || null;
+}
+
+function renderRoutesTab() {
+  setAccent('#15803d');
+  renderRoutesSub(state.routes.sub);
+}
+
+function routesSubtabs() {
+  const items = [['new', 'New Route'], ['routes', 'Routes']];
+  return el('div', { class: 'subtabs' }, items.map(([key, label]) =>
+    el('button', { class: 'subtab' + (state.routes.sub === key ? ' active' : ''), onclick: () => renderRoutesSub(key) }, [label])
+  ));
+}
+
+function renderRoutesSub(sub) {
+  state.routes.sub = sub;
+  const view = document.getElementById('view');
+  view.innerHTML = '';
+  view.appendChild(routesSubtabs());
+  if (sub === 'routes') renderRoutesListInto(view);
+  else renderNewRouteInto(view);
+}
+
+function renderNewRouteInto(view) {
+  view.appendChild(el('div', { class: 'card rn-new-card' }, [
+    el('h2', { class: 'card-title' }, ['Start a New Route']),
+    el('div', { class: 'field' }, [
+      el('span', { class: 'field-label' }, ['Route Name']),
+      el('input', { type: 'text', id: 'newRouteName', placeholder: 'e.g. Tuesday North Run', onkeydown: (e) => { if (e.key === 'Enter') createRoute(); } }),
+    ]),
+    el('button', { class: 'btn primary big', onclick: createRoute }, ['Start Route →']),
+  ]));
+}
+
+function createRoute() {
+  const input = document.getElementById('newRouteName');
+  const name = input ? input.value.trim() : '';
+  if (!name) { toast('Enter a route name first.'); return; }
+  if (routes.some((r) => r.name.toLowerCase() === name.toLowerCase())) { toast('A route with that name already exists.'); return; }
+  const r = newRoute(name);
+  routes.push(r);
+  persist(ROUTES_DB, ROUTES_KEY, routes);
+  state.routes.currentId = r.id;
+  renderRouteEditor();
+  toast('Route created — add your stops.');
+}
+
+function renderRoutesListInto(view) {
+  view.appendChild(el('div', { class: 'page-head' }, [
+    el('h2', { class: 'page-title' }, ['Saved Routes (' + routes.length + ')']),
+    el('button', { class: 'btn ghost small', onclick: exportAllRoutes }, ['Backup JSON']),
+  ]));
+  if (!routes.length) {
+    view.appendChild(el('div', { class: 'empty small' }, ['No routes yet. Create one from the New Route tab.']));
+    return;
+  }
+  const sorted = [...routes].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  const list = el('div', { class: 'rec-list' });
+  for (const r of sorted) {
+    const withNotes = r.stops.filter((s) => s.notes && s.notes.trim()).length;
+    list.appendChild(el('div', { class: 'card rec' }, [
+      el('div', { class: 'rec-main', onclick: () => openRoute(r.id) }, [
+        el('div', {}, [
+          el('div', { class: 'rec-name' }, [r.name]),
+          el('div', { class: 'rec-meta' }, [r.stops.length + ' stops  •  ' + (r.routeDate || 'no date')]),
+        ]),
+        el('span', { class: 'badge ' + (withNotes ? 'bad-ni' : 'bad-ok') }, [withNotes ? withNotes + ' with notes' : 'no notes yet']),
+      ]),
+      el('div', { class: 'rec-actions' }, [
+        el('button', { class: 'btn ghost small', onclick: () => openRoute(r.id) }, ['Open']),
+        el('button', { class: 'btn ghost small primary-outline', onclick: () => openRouteReport(r.id) }, ['Print / PDF']),
+        el('button', { class: 'btn ghost small', onclick: () => exportRoute(r) }, ['JSON']),
+        el('button', { class: 'btn ghost small danger', onclick: () => deleteRoute(r.id) }, ['Delete']),
+      ]),
+    ]));
+  }
+  view.appendChild(list);
+}
+
+function openRoute(id) {
+  state.routes.currentId = id;
+  renderRouteEditor();
+}
+
+function renderRouteEditor() {
+  const view = document.getElementById('view');
+  view.innerHTML = '';
+  const r = currentRoute();
+  if (!r) { renderRoutesSub('routes'); return; }
+
+  view.appendChild(el('div', { class: 'backbar' }, [
+    el('button', { class: 'btn ghost small', onclick: () => renderRoutesSub('routes') }, ['← Routes']),
+    el('button', { class: 'btn primary small', onclick: () => openRouteReport(r.id) }, ['Print / PDF']),
+  ]));
+
+  view.appendChild(el('div', { class: 'card' }, [
+    el('div', { class: 'field' }, [
+      el('span', { class: 'field-label' }, ['Route Name']),
+      el('input', { type: 'text', value: r.name, onchange: (e) => { r.name = e.target.value; persist(ROUTES_DB, ROUTES_KEY, routes); } }),
+    ]),
+    el('div', { class: 'field' }, [
+      el('span', { class: 'field-label' }, ['Delivery Date']),
+      el('input', { type: 'date', value: r.routeDate, onchange: (e) => { r.routeDate = e.target.value; persist(ROUTES_DB, ROUTES_KEY, routes); } }),
+    ]),
+    el('div', { class: 'rn-route-buttons' }, [
+      el('button', { class: 'btn ghost small', onclick: () => clearNotes(r) }, ['Clear all notes']),
+      el('button', { class: 'btn ghost small', onclick: () => exportRoute(r) }, ['Export JSON']),
+    ]),
+  ]));
+
+  const progress = el('div', { class: 'rn-progress' });
+  view.appendChild(progress);
+  updateProgress(r);
+
+  const list = el('div', { class: 'rn-stop-list' });
+  r.stops.forEach((stop, idx) => { list.appendChild(stopCard(r, stop, idx)); });
+  view.appendChild(list);
+
+  view.appendChild(el('div', { class: 'actions' }, [
+    el('button', { class: 'btn primary big', onclick: () => addStop(r) }, ['+ Add Stop']),
+  ]));
+}
+
+function stopCard(r, stop, idx) {
+  return el('div', { class: 'card rn-stop-card' }, [
+    el('div', { class: 'rn-stop-head' }, [
+      el('span', { class: 'rn-stop-num' }, [String(idx + 1)]),
+      el('span', { class: 'rn-stop-name' }, [stop.name || '(new stop)']),
+      stop.cod ? el('span', { class: 'rn-cod' }, ['C.O.D.']) : null,
+    ]),
+    el('div', { class: 'rn-stop-body' }, [
+      el('div', { class: 'field' }, [
+        el('span', { class: 'field-label' }, ['Stop Name']),
+        el('input', { type: 'text', placeholder: 'e.g. OROURKE MOTORS', value: stop.name, oninput: (e) => { stop.name = e.target.value; persist(ROUTES_DB, ROUTES_KEY, routes); updateStopLabel(stop, e.target); } }),
+      ]),
+      el('div', { class: 'field' }, [
+        el('span', { class: 'field-label' }, ['Ride-along Notes (this run)']),
+        el('textarea', { class: 'notes', rows: 2, placeholder: 'Type notes here…', value: stop.notes, oninput: (e) => { stop.notes = e.target.value; persist(ROUTES_DB, ROUTES_KEY, routes); updateProgress(r); } }),
+      ]),
+      el('div', { class: 'field' }, [
+        el('span', { class: 'field-label' }, ['Instructions (optional)']),
+        el('textarea', { class: 'rn-instr', rows: 1, placeholder: 'Drop-off instructions, contact, etc.', value: stop.instructions, oninput: (e) => { stop.instructions = e.target.value; persist(ROUTES_DB, ROUTES_KEY, routes); } }),
+      ]),
+      el('label', { class: 'rn-cod-toggle' }, [
+        el('input', { type: 'checkbox', checked: stop.cod, onchange: (e) => { stop.cod = e.target.checked; persist(ROUTES_DB, ROUTES_KEY, routes); } }),
+        el('span', {}, ['C.O.D. (cash on delivery)']),
+      ]),
+      el('div', { class: 'rn-stop-controls' }, [
+        el('button', { class: 'btn ghost small', disabled: idx === 0, onclick: () => moveStop(r, idx, -1) }, ['↑']),
+        el('button', { class: 'btn ghost small', disabled: idx === r.stops.length - 1, onclick: () => moveStop(r, idx, 1) }, ['↓']),
+        el('button', { class: 'btn ghost small danger', onclick: () => deleteStop(r, idx) }, ['Delete stop']),
+      ]),
+    ]),
+  ]);
+}
+
+function updateStopLabel(stop, input) {
+  const card = input.closest('.rn-stop-card');
+  const name = card ? card.querySelector('.rn-stop-name') : null;
+  if (name) name.textContent = stop.name || '(new stop)';
+}
+
+function addStop(r) {
+  r.stops.push(makeStop());
+  persist(ROUTES_DB, ROUTES_KEY, routes);
+  renderRouteEditor();
+}
+
+function deleteStop(r, idx) {
+  r.stops.splice(idx, 1);
+  persist(ROUTES_DB, ROUTES_KEY, routes);
+  renderRouteEditor();
+}
+
+function moveStop(r, idx, dir) {
+  const j = idx + dir;
+  if (j < 0 || j >= r.stops.length) return;
+  const [s] = r.stops.splice(idx, 1);
+  r.stops.splice(j, 0, s);
+  persist(ROUTES_DB, ROUTES_KEY, routes);
+  renderRouteEditor();
+}
+
+function clearNotes(r) {
+  if (!confirm('Clear all ride-along notes on this route? (Instructions stay.)')) return;
+  for (const s of r.stops) s.notes = '';
+  persist(ROUTES_DB, ROUTES_KEY, routes);
+  renderRouteEditor();
+  toast('Notes cleared.');
+}
+
+function updateProgress(r) {
+  const done = r.stops.filter((s) => s.notes && s.notes.trim()).length;
+  const pct = r.stops.length ? Math.round((done / r.stops.length) * 100) : 0;
+  const bar = document.querySelector('.rn-progress');
+  if (bar) bar.innerHTML = '<div class="rn-progress-fill" style="width:' + pct + '%"></div><span>' + done + '/' + r.stops.length + ' stops noted</span>';
+}
+
+function deleteRoute(id) {
+  const r = routes.find((x) => x.id === id);
+  if (!r) return;
+  if (!confirm('Delete route "' + r.name + '"?')) return;
+  routes = routes.filter((x) => x.id !== id);
+  if (state.routes.currentId === id) state.routes.currentId = null;
+  persist(ROUTES_DB, ROUTES_KEY, routes);
+  renderRoutesSub('routes');
+}
+
+function exportRoute(r) {
+  download((r.name.replace(/\s+/g, '_') || 'route') + '-' + (r.routeDate || 'nodate') + '.json', JSON.stringify(r, null, 2));
+}
+
+function exportAllRoutes() {
+  if (!routes.length) { toast('Nothing to export yet.'); return; }
+  download('route-notes-all-' + todayISO() + '.json', JSON.stringify(routes, null, 2));
+}
+
+function exportRoutesCsv() {
+  if (!routes.length) { toast('No routes yet.'); return; }
+  const rows = [['Route', 'Delivery Date', 'Stop #', 'Stop', 'C.O.D.', 'Instructions', 'Ride-along Notes']];
+  for (const r of routes) {
+    if (!r.stops.length) rows.push([r.name, r.routeDate || '', '1', '', '', '', '']);
+    r.stops.forEach((s, i) => {
+      rows.push([r.name, r.routeDate || '', String(i + 1), s.name || '', s.cod ? 'Yes' : '', s.instructions || '', s.notes || '']);
+    });
+  }
+  downloadCsv('route-notes-' + todayISO() + '.csv', rows);
+}
+
+function openRouteReport(id) {
+  const r = routes.find((x) => x.id === id);
+  if (!r) return;
+  const view = document.getElementById('view');
+  view.innerHTML = '';
+  view.appendChild(el('div', { class: 'backbar' }, [
+    el('button', { class: 'btn ghost small', onclick: () => renderRoutesSub('routes') }, ['← Back']),
+    el('button', { class: 'btn primary small', onclick: () => window.print() }, ['Print / PDF']),
+  ]));
+  const report = el('div', { class: 'pace-report' }, []);
+  report.appendChild(el('h2', {}, ['Route Notes']));
+  report.appendChild(el('p', { class: 'rsub' }, [esc(r.name) + ' • Delivery ' + esc(r.routeDate || 'no date') + ' • ' + r.stops.length + ' stops']));
+  const tbl = el('table', { class: 'rtbl' });
+  const head = el('tr', {});
+  for (const h of ['#', 'Stop', 'C.O.D.', 'Instructions', 'Ride-along Notes']) head.appendChild(el('th', {}, [h]));
+  tbl.appendChild(head);
+  if (!r.stops.length) {
+    tbl.appendChild(el('tr', {}, [el('td', { colspan: 5 }, ['No stops on this route.'])]));
+  }
+  r.stops.forEach((s, i) => {
+    tbl.appendChild(el('tr', {}, [
+      el('td', {}, [String(i + 1)]),
+      el('td', {}, [esc(s.name) || '—']),
+      el('td', {}, [s.cod ? 'Yes' : '']),
+      el('td', {}, [esc(s.instructions) || '—']),
+      el('td', {}, [esc(s.notes) || '—']),
+    ]));
+  });
+  report.appendChild(tbl);
+  view.appendChild(report);
 }
 
 /* ================================================================
