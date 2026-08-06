@@ -200,7 +200,7 @@ const state = {
   tab: 'home',
   review: { sub: 'new', current: null },
   pace: { sub: 'new', current: null },
-  training: { view: 'trainees', currentId: null },
+  training: { view: 'trainees', currentId: null, coOpen: {} },
   certs: { driverId: null },
   routes: { sub: 'new', currentId: null, closed: {} },
 };
@@ -587,6 +587,7 @@ function renderDossierFor(name, body) {
     const milesDone = Object.values(tr.milestones || {}).filter((m) => m && m.date);
     trainSec.appendChild(el('p', { class: 'rsub' }, ['Completed topics: ' + (topicsDone || 'none yet')]));
     if (milesDone.length) trainSec.appendChild(el('p', { class: 'rsub' }, ['Milestones reached: ' + milesDone.map((m) => m.date).join(', ')]));
+    trainSec.appendChild(el('p', { class: 'rsub' }, ['Check-Off: ' + coCount(tr) + '/' + CHECKOFF_TOTAL + ' items signed']));
     if (tr.notes) trainSec.appendChild(el('p', { class: 'rsub' }, ['Trainer notes: ' + tr.notes]));
   }
   report.appendChild(trainSec);
@@ -1370,6 +1371,81 @@ const MILESTONES = [
   'Ride-along 4', 'Solo with shadow', 'Ready for release', 'Released / sign-off',
 ];
 
+const CHECKOFF_GROUPS = [
+  { name: 'Pre & Post Trip', items: [
+    'Lights', 'Tires', 'Brakes',
+    'Valid Driver License & Med Card in possession',
+    'Corrective lenses or hearing aid if needed',
+    'Checking oil/fluids daily', 'Horn', 'Air or oil (fluid) leaks — including windshield',
+    'Belts and hoses', 'Battery cover and fuel caps secured',
+    'Annual DOT inspection current', 'Load securement', 'Fire extinguisher',
+    'In-cab paperwork — Registration/Insurance/UCR/Hazmat, etc.',
+    'Warning triangles', 'Leaf spring/air bags and frame bolts',
+    'Lift gate operation (if applicable)', 'Air brake system and operation (if applicable)',
+  ]},
+  { name: 'Dash Cameras', items: [
+    'How the dash camera works', 'Tampering — consequences',
+    'Samsara / Elite Extra', 'Trained & understands Samsara DVIR/App',
+    'Trained & understands Samsara ELD (if applicable)', 'Trained & understands Elite Extra (if applicable)',
+  ]},
+  { name: 'Driver Qualification (compliance review)', items: [
+    'DQ file 100% compliant', 'Road test completed', 'Medical card obtained',
+    'Drug & alcohol query ran (CDL drivers)', 'All LMS modules completed',
+  ]},
+  { name: 'PACE Training', items: [
+    'Driver evaluation completed', 'Uses PACE principles while operating vehicle',
+    'No hand-held mobile devices while operating any company vehicle',
+    'Fatigued driving discussed', '3 types of distractions (mental — manual — visual) discussed',
+  ]},
+  { name: 'Operating Vehicle on the Road', items: [
+    'Following distance', 'Safe speed — follow speed limits', 'Lane changes',
+    'Following truck routes', 'Lane restrictions', 'Driver alert', 'Driver safety bonus',
+    'Seat belt usage (proper usage)', 'Fueling trucks — off-road fuel/diesel/gasoline',
+  ]},
+  { name: 'Operating Vehicle in a Parking Lot', items: [
+    'Avoid backing — do a pull-through', 'Avoid blind-side backing',
+    'If you must back — G.O.A.L.', 'If you must back — avoid distractions, radio down, window down',
+    'Watch for low overhangs/wires/canopies/trees/garage doors',
+    'Avoid traveling under any obstruction you don\'t have to go under',
+    'Know the height of your vehicle', 'Go slow',
+    'Keep safe distance from buildings/vehicles/objects', 'Watch for vehicle swing-out/tail swing',
+  ]},
+  { name: 'Roadside Inspections', items: [
+    'CSA program — how it works', 'Turn in inspection report to your supervisor',
+    'Weigh station / port of entry — do I have to stop / what to expect?',
+  ]},
+  { name: 'Incident / Crash Procedures', items: [
+    'Contact authorities if in a vehicle incident on the road', 'Securing crash scene area',
+    'Contact/report all vehicle incidents to supervisor at first available opportunity',
+    'Crash scene photos',
+  ]},
+  { name: 'Hours of Service', items: [
+    'Understands HOS regulations and how they apply',
+    'Understands HOS ELD exemptions and how they apply',
+  ]},
+];
+
+const CHECKOFF_TOTAL = CHECKOFF_GROUPS.reduce((n, g) => n + g.items.length, 0);
+
+function coItem(tr, item) {
+  return (tr.checkoffs && tr.checkoffs[item]) || { date: '', driver: '', trainer: '' };
+}
+
+function ensureCheckoffs(tr) {
+  if (!tr.checkoffs) tr.checkoffs = {};
+  for (const g of CHECKOFF_GROUPS) {
+    for (const item of g.items) {
+      if (!tr.checkoffs[item]) tr.checkoffs[item] = { date: '', driver: '', trainer: '' };
+    }
+  }
+  return tr;
+}
+
+function coCount(tr) {
+  const items = Object.values(tr.checkoffs || {}).filter((s) => s && s.date);
+  return items.length;
+}
+
 function renderTrainingTab() {
   setAccent('#7c3aed');
   renderTrainingView(state.training.view);
@@ -1411,7 +1487,8 @@ function newTrainee(name, hireDate, trainer) {
   for (const t of TOPICS) topics[t] = { date: '', trainer: '' };
   const milestones = {};
   for (const m of MILESTONES) milestones[m] = { date: '', notes: '' };
-  return { id: uid(), name, hireDate, trainer, topics, milestones, notes: '' };
+  const tr = { id: uid(), name, hireDate, trainer, topics, milestones, notes: '' };
+  return ensureCheckoffs(tr);
 }
 
 function currentTrainee() {
@@ -1478,6 +1555,8 @@ function saveNewTrainee() {
 
 function openTrainee(id) {
   state.training.currentId = id;
+  state.training.coOpen = {};
+  if (CHECKOFF_GROUPS.length) state.training.coOpen[CHECKOFF_GROUPS[0].name] = true;
   renderTraineeDetail();
 }
 
@@ -1517,6 +1596,8 @@ function renderTraineeDetail() {
     }),
   ]));
 
+  view.appendChild(renderCheckoffCard(ensureCheckoffs(tr)));
+
   view.appendChild(el('div', { class: 'card' }, [
     el('h2', { class: 'card-title' }, ['Ride-Alongs & Milestones (' + Object.values(tr.milestones).filter((m) => m.date).length + '/' + MILESTONES.length + ')']),
     ...MILESTONES.map((m) => {
@@ -1537,6 +1618,113 @@ function renderTraineeDetail() {
     el('textarea', { id: 'traineeNotes', class: 'notes', rows: 4, placeholder: 'Observations, areas to work on, follow-ups…' }, [tr.notes || '']),
     el('div', { class: 'btn-row' }, [el('button', { class: 'btn primary', onclick: () => saveTrainNotes() }, ['Save Notes'])]),
   ]));
+}
+
+function renderCheckoffCard(tr) {
+  const done = coCount(tr);
+  return el('div', { class: 'card' }, [
+    el('div', { class: 'section-head' }, [
+      el('h2', { class: 'card-title co-sum' }, ['Driver/Trainer Check-Off (' + done + '/' + CHECKOFF_TOTAL + ')']),
+    ]),
+    el('p', { class: 'rsub' }, ['Sign off each item with driver initials, trainer initials, and the date.']),
+    ...CHECKOFF_GROUPS.map((g) => checkoffGroup(tr, g)),
+  ]);
+}
+
+function checkoffGroup(tr, g) {
+  const open = !!state.training.coOpen[g.name];
+  const done = g.items.filter((it) => coItem(tr, it).date).length;
+  return el('div', { class: 'co-group' }, [
+    el('button', { class: 'co-head' + (open ? ' open' : ''), onclick: () => toggleCoGroup(g.name) }, [
+      el('span', { class: 'co-title' }, [g.name]),
+      el('span', { class: 'co-count' }, [done + '/' + g.items.length]),
+      el('span', { class: 'rn-chevron' }, ['▾']),
+    ]),
+    ...(open ? [coTable(tr, g)] : []),
+  ]);
+}
+
+function toggleCoGroup(name) {
+  if (state.training.coOpen[name]) delete state.training.coOpen[name];
+  else state.training.coOpen[name] = true;
+  renderTraineeDetail();
+}
+
+function coTable(tr, g) {
+  const wrap = el('div', { class: 'co-table' });
+  wrap.appendChild(el('div', { class: 'co-row co-th' }, [
+    el('div', { class: 'co-item' }, ['Item']),
+    el('div', { class: 'co-drv' }, ['Driver']),
+    el('div', { class: 'co-tr' }, ['Trainer']),
+    el('div', { class: 'co-date' }, ['Date']),
+  ]));
+  for (const item of g.items) {
+    const s = coItem(tr, item);
+    const complete = !!(s.date && s.driver && s.trainer);
+    wrap.appendChild(el('div', { class: 'co-row' + (complete ? ' done' : '') }, [
+      el('div', { class: 'co-item' }, [item]),
+      el('div', { class: 'co-drv' }, [el('input', { type: 'text', class: 'co-input', maxlength: '3', placeholder: '·', value: s.driver, oninput: (e) => { s.driver = e.target.value; saveCo(tr); refreshCo(e.target); } })]),
+      el('div', { class: 'co-tr' }, [el('input', { type: 'text', class: 'co-input', maxlength: '3', placeholder: '·', value: s.trainer, oninput: (e) => { s.trainer = e.target.value; saveCo(tr); refreshCo(e.target); } })]),
+      el('div', { class: 'co-date' }, [el('input', { type: 'date', class: 'co-input', value: s.date, onchange: (e) => { s.date = e.target.value; saveCo(tr); refreshCo(e.target); } })]),
+    ]));
+  }
+  const pending = g.items.filter((it) => !coItem(tr, it).date);
+  wrap.appendChild(el('div', { class: 'co-actions' }, [
+    el('button', { class: 'btn ghost small', onclick: () => completeCoGroup(tr, g) }, ['Mark group complete' + (pending.length ? ' (' + pending.length + ')' : '')]),
+  ]));
+  return wrap;
+}
+
+function saveCo(tr) {
+  persist(TRAIN_DB, TRAIN_KEY, trainees);
+}
+
+function refreshCo(input) {
+  const row = input.closest ? input.closest('.co-row') : null;
+  if (row) {
+    const vals = row.querySelectorAll('.co-input');
+    const complete = vals.length === 3 && Array.from(vals).every((v) => v.value && v.value.trim());
+    row.classList.toggle('done', complete);
+  }
+  const group = input.closest ? input.closest('.co-group') : null;
+  if (group) {
+    const count = group.querySelector('.co-count');
+    if (count) {
+      const rows = group.querySelectorAll('.co-row:not(.co-th)');
+      let done = 0;
+      rows.forEach((r) => { if (r.classList.contains('done')) done++; });
+      count.textContent = done + '/' + rows.length;
+    }
+  }
+  const head = document.querySelector('.co-sum');
+  if (head) {
+    const rows = document.querySelectorAll('.co-row:not(.co-th)');
+    let done = 0;
+    rows.forEach((r) => { if (r.classList.contains('done')) done++; });
+    head.textContent = 'Driver/Trainer Check-Off (' + done + '/' + rows.length + ')';
+  }
+}
+
+function completeCoGroup(tr, g) {
+  const pending = g.items.filter((it) => !coItem(tr, it).date);
+  if (!pending.length) { toast('This group is already signed off.'); return; }
+  let initials = (tr.coInitials || '').toUpperCase();
+  if (!initials) {
+    const v = prompt('Trainer initials for this group?', '');
+    if (v === null) return;
+    initials = v.trim().toUpperCase();
+    if (!initials) return;
+    tr.coInitials = initials;
+  }
+  for (const it of pending) {
+    const s = tr.checkoffs[it];
+    s.date = todayISO();
+    s.trainer = initials;
+    if (!s.driver) s.driver = initials;
+  }
+  persist(TRAIN_DB, TRAIN_KEY, trainees);
+  renderTraineeDetail();
+  toast(pending.length + ' item(s) signed off for ' + g.name + '.');
 }
 
 function toggleTopic(t) {
@@ -1637,6 +1825,7 @@ function trainPrintHtml() {
     'th { background: #eee; }' +
     'h2 { font-size: 14px; margin: 22px 0 6px; border-bottom: 1px solid #ccc; padding-bottom: 3px; }' +
     'h3 { font-size: 13px; margin: 10px 0 4px; }' +
+    'h4 { font-size: 12.5px; margin: 12px 0 4px; color: #333; }' +
     'ul { margin: 0 0 10px; }' +
     'li { font-size: 12px; margin-bottom: 2px; }' +
     '.foot { margin-top: 30px; display: flex; gap: 60px; }' +
@@ -1649,8 +1838,25 @@ function trainPrintHtml() {
     '<h2>Curriculum &amp; Milestones</h2>' +
     '<h3>Training Topics (' + TOPICS.length + ')</h3><ul>' + TOPICS.map((t) => '<li>' + esc(t) + '</li>').join('') + '</ul>' +
     '<h3>Ride-Along Milestones (' + MILESTONES.length + ')</h3><ul>' + MILESTONES.map((m) => '<li>' + esc(m) + '</li>').join('') + '</ul>' +
-    '<div class="foot"><div class="sig">Trainer Signature</div><div class="sig">Trainee Signature</div><div class="sig">Date</div></div>' +
+    '<h2>Driver/Trainer Check-Off</h2>' +
+    trainees.map(checkoffPrintBlock).join('') +
+    '<div class="foot"><div class="sig">Trainer Signature</div><div class="sig">Trainee Signature</div><div class="sig">Operations Leader Signature</div><div class="sig">DOT Compliance Signature</div><div class="sig">Date</div></div>' +
     '</body></html>';
+}
+
+function checkoffPrintBlock(tr) {
+  ensureCheckoffs(tr);
+  const done = coCount(tr);
+  const groups = CHECKOFF_GROUPS.map((g) => {
+    const gdone = g.items.filter((it) => coItem(tr, it).date).length;
+    return '<h4>' + esc(g.name) + ' (' + gdone + '/' + g.items.length + ')</h4>' +
+      '<table><tr><th>Item</th><th>Driver Initials</th><th>Trainer Initials</th><th>Date</th></tr>' +
+      g.items.map((it) => {
+        const s = coItem(tr, it);
+        return '<tr><td>' + esc(it) + '</td><td>' + esc(s.driver) + '</td><td>' + esc(s.trainer) + '</td><td>' + esc(s.date) + '</td></tr>';
+      }).join('') + '</table>';
+  }).join('');
+  return '<h3>' + esc(tr.name) + ' — ' + done + '/' + CHECKOFF_TOTAL + ' signed</h3>' + groups;
 }
 
 /* ================================================================
