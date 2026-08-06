@@ -1372,30 +1372,13 @@ const MILESTONES = [
 ];
 
 const CHECKOFF_GROUPS = [
-  { name: 'Pre & Post Trip', items: [
-    'Lights', 'Tires', 'Brakes',
-    'Valid Driver License & Med Card in possession',
-    'Corrective lenses or hearing aid if needed',
-    'Checking oil/fluids daily', 'Horn', 'Air or oil (fluid) leaks — including windshield',
-    'Belts and hoses', 'Battery cover and fuel caps secured',
-    'Annual DOT inspection current', 'Load securement', 'Fire extinguisher',
-    'In-cab paperwork — Registration/Insurance/UCR/Hazmat, etc.',
-    'Warning triangles', 'Leaf spring/air bags and frame bolts',
-    'Lift gate operation (if applicable)', 'Air brake system and operation (if applicable)',
-  ]},
-  { name: 'Dash Cameras', items: [
-    'How the dash camera works', 'Tampering — consequences',
-    'Samsara / Elite Extra', 'Trained & understands Samsara DVIR/App',
-    'Trained & understands Samsara ELD (if applicable)', 'Trained & understands Elite Extra (if applicable)',
-  ]},
-  { name: 'Driver Qualification (compliance review)', items: [
-    'DQ file 100% compliant', 'Road test completed', 'Medical card obtained',
-    'Drug & alcohol query ran (CDL drivers)', 'All LMS modules completed',
-  ]},
   { name: 'PACE Training', items: [
     'Driver evaluation completed', 'Uses PACE principles while operating vehicle',
-    'No hand-held mobile devices while operating any company vehicle',
-    'Fatigued driving discussed', '3 types of distractions (mental — manual — visual) discussed',
+  ]},
+  { name: 'Distracted Driving', items: [
+    'No use of any hand-held mobile devices while operating any company vehicle',
+    'Fatigued driving discussed',
+    '3 types of distractions (mental — manual — visual) discussed',
   ]},
   { name: 'Operating Vehicle on the Road', items: [
     'Following distance', 'Safe speed — follow speed limits', 'Lane changes',
@@ -1422,6 +1405,28 @@ const CHECKOFF_GROUPS = [
   { name: 'Hours of Service', items: [
     'Understands HOS regulations and how they apply',
     'Understands HOS ELD exemptions and how they apply',
+  ]},
+  { name: 'Pre & Post Trip', items: [
+    'Lights', 'Tires', 'Brakes',
+    'Valid Driver License & Med Card in possession',
+    'Corrective lenses or hearing aid if needed',
+    'Checking oil/fluids daily', 'Horn', 'Air or oil (fluid) leaks — including windshield',
+    'Belts and hoses', 'Battery cover and fuel caps secured',
+    'Annual DOT inspection current', 'Load securement', 'Fire extinguisher',
+    'In-cab paperwork — Registration/Insurance/UCR/Hazmat, etc.',
+    'Warning triangles', 'Leaf spring/air bags and frame bolts',
+    'Lift gate operation (if applicable)', 'Air brake system and operation (if applicable)',
+  ]},
+  { name: 'Dash Camera', items: [
+    'How the dash camera works', 'Tampering — consequences',
+  ]},
+  { name: 'Samsara', items: [
+    'Samsara / Elite Extra', 'Trained & understands Samsara DVIR/App',
+    'Trained & understands Samsara ELD (if applicable)', 'Trained & understands Elite Extra (if applicable)',
+  ]},
+  { name: 'Driver Qualification (compliance review)', items: [
+    'DQ file 100% compliant', 'Road test completed', 'Medical card obtained',
+    'Drug & alcohol query ran (CDL drivers)', 'All LMS modules completed',
   ]},
 ];
 
