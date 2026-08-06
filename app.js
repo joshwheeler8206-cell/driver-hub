@@ -202,7 +202,7 @@ const state = {
   pace: { sub: 'new', current: null },
   training: { view: 'trainees', currentId: null },
   certs: { driverId: null },
-  routes: { sub: 'new', currentId: null },
+  routes: { sub: 'new', currentId: null, closed: {} },
 };
 
 function setAccent(color) {
@@ -1998,6 +1998,7 @@ function createRoute() {
   routes.push(r);
   persist(ROUTES_DB, ROUTES_KEY, routes);
   state.routes.currentId = r.id;
+  state.routes.closed = {};
   renderRouteEditor();
   toast('Route created — add your stops.');
 }
@@ -2026,6 +2027,7 @@ function renderRoutesListInto(view) {
       el('div', { class: 'rec-actions' }, [
         el('button', { class: 'btn ghost small', onclick: () => openRoute(r.id) }, ['Open']),
         el('button', { class: 'btn ghost small primary-outline', onclick: () => openRouteReport(r.id) }, ['Print / PDF']),
+        el('button', { class: 'btn ghost small', onclick: () => duplicateRoute(r.id) }, ['Duplicate']),
         el('button', { class: 'btn ghost small', onclick: () => exportRoute(r) }, ['JSON']),
         el('button', { class: 'btn ghost small danger', onclick: () => deleteRoute(r.id) }, ['Delete']),
       ]),
@@ -2036,6 +2038,7 @@ function renderRoutesListInto(view) {
 
 function openRoute(id) {
   state.routes.currentId = id;
+  state.routes.closed = {};
   renderRouteEditor();
 }
 
@@ -2060,6 +2063,7 @@ function renderRouteEditor() {
       el('input', { type: 'date', value: r.routeDate, onchange: (e) => { r.routeDate = e.target.value; persist(ROUTES_DB, ROUTES_KEY, routes); } }),
     ]),
     el('div', { class: 'rn-route-buttons' }, [
+      el('button', { class: 'btn ghost small', onclick: () => duplicateRoute(r.id) }, ['Duplicate route']),
       el('button', { class: 'btn ghost small', onclick: () => clearNotes(r) }, ['Clear all notes']),
       el('button', { class: 'btn ghost small', onclick: () => exportRoute(r) }, ['Export JSON']),
     ]),
@@ -2079,12 +2083,8 @@ function renderRouteEditor() {
 }
 
 function stopCard(r, stop, idx) {
-  return el('div', { class: 'card rn-stop-card' }, [
-    el('div', { class: 'rn-stop-head' }, [
-      el('span', { class: 'rn-stop-num' }, [String(idx + 1)]),
-      el('span', { class: 'rn-stop-name' }, [stop.name || '(new stop)']),
-      stop.cod ? el('span', { class: 'rn-cod' }, ['C.O.D.']) : null,
-    ]),
+  const closed = !!state.routes.closed[idx];
+  const body = closed ? [] : [
     el('div', { class: 'rn-stop-body' }, [
       el('div', { class: 'field' }, [
         el('span', { class: 'field-label' }, ['Stop Name']),
@@ -2108,7 +2108,21 @@ function stopCard(r, stop, idx) {
         el('button', { class: 'btn ghost small danger', onclick: () => deleteStop(r, idx) }, ['Delete stop']),
       ]),
     ]),
-  ]);
+  ];
+  return el('div', { class: 'card rn-stop-card' }, [
+    el('button', { class: 'rn-stop-head' + (closed ? '' : ' open'), onclick: () => toggleStop(idx) }, [
+      el('span', { class: 'rn-stop-num' }, [String(idx + 1)]),
+      el('span', { class: 'rn-stop-name' }, [stop.name || '(new stop)']),
+      stop.cod ? el('span', { class: 'rn-cod' }, ['C.O.D.']) : null,
+      el('span', { class: 'rn-chevron' }, ['▾']),
+    ]),
+  ].concat(body));
+}
+
+function toggleStop(idx) {
+  if (state.routes.closed[idx]) delete state.routes.closed[idx];
+  else state.routes.closed[idx] = true;
+  renderRouteEditor();
 }
 
 function updateStopLabel(stop, input) {
@@ -2119,12 +2133,14 @@ function updateStopLabel(stop, input) {
 
 function addStop(r) {
   r.stops.push(makeStop());
+  state.routes.closed = {};
   persist(ROUTES_DB, ROUTES_KEY, routes);
   renderRouteEditor();
 }
 
 function deleteStop(r, idx) {
   r.stops.splice(idx, 1);
+  state.routes.closed = {};
   persist(ROUTES_DB, ROUTES_KEY, routes);
   renderRouteEditor();
 }
@@ -2134,8 +2150,26 @@ function moveStop(r, idx, dir) {
   if (j < 0 || j >= r.stops.length) return;
   const [s] = r.stops.splice(idx, 1);
   r.stops.splice(j, 0, s);
+  state.routes.closed = {};
   persist(ROUTES_DB, ROUTES_KEY, routes);
   renderRouteEditor();
+}
+
+function duplicateRoute(id) {
+  const r = routes.find((x) => x.id === id);
+  if (!r) return;
+  const copy = JSON.parse(JSON.stringify(r));
+  copy.id = uid();
+  copy.createdAt = new Date().toISOString();
+  copy.routeDate = todayISO();
+  copy.name = r.name + ' (copy)';
+  for (const s of copy.stops) s.notes = '';
+  routes.push(copy);
+  state.routes.currentId = copy.id;
+  state.routes.closed = {};
+  persist(ROUTES_DB, ROUTES_KEY, routes);
+  renderRouteEditor();
+  toast('Route duplicated — notes cleared.');
 }
 
 function clearNotes(r) {
@@ -2194,6 +2228,13 @@ function openRouteReport(id) {
     el('button', { class: 'btn primary small', onclick: () => window.print() }, ['Print / PDF']),
   ]));
   const report = el('div', { class: 'pace-report' }, []);
+  report.appendChild(el('div', { class: 'rn-print-head' }, [
+    el('img', { src: 'icons/icon-192.png', alt: '' }),
+    el('div', {}, [
+      el('div', { class: 'rn-print-title' }, ['U.S. AutoForce — Route Notes']),
+      el('div', { class: 'rn-print-sub' }, ['Prepared ' + todayISO()]),
+    ]),
+  ]));
   report.appendChild(el('h2', {}, ['Route Notes']));
   report.appendChild(el('p', { class: 'rsub' }, [esc(r.name) + ' • Delivery ' + esc(r.routeDate || 'no date') + ' • ' + r.stops.length + ' stops']));
   const tbl = el('table', { class: 'rtbl' });
@@ -2213,6 +2254,10 @@ function openRouteReport(id) {
     ]));
   });
   report.appendChild(tbl);
+  report.appendChild(el('div', { class: 'rn-print-foot' }, [
+    el('div', { class: 'rn-sign' }, ['Driver signature: ']),
+    el('div', { class: 'rn-sign' }, ['Date: ']),
+  ]));
   view.appendChild(report);
 }
 
