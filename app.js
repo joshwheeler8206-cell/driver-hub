@@ -345,7 +345,7 @@ function renderHome() {
 
   view.appendChild(el('footer', { class: 'app-footer' }, [
     el('span', { class: 'fl' }, ['U.S. AutoForce']),
-    ' · Field Operations · Data stays on this device',
+    ' · Driver Hub v1.0 · Field Operations · Data stays on this device',
   ]));
 }
 
