@@ -1,4 +1,5 @@
 # AutoForce Driver Hub
+<p align="center"><img src="icons/logo-tile.png" alt="U.S. AutoForce" width="340"></p>
 
 One app for the whole driver lifecycle. Combines **Quarterly Review** (ride-along evals), **New-Hire Training**, and **Certifications** — sharing the same local data stores as the standalone apps so everything stays in sync.
 
