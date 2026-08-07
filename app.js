@@ -144,10 +144,12 @@ function persist(dbName, key, data) {
   if (canIdb) {
     _queues[dbName] = (_queues[dbName] || Promise.resolve())
       .then(() => idbSet(dbName, key, snapshot)).catch(() => {});
+    updateTrainBadge();
     return _queues[dbName];
   }
   try { localStorage.setItem(dbName + ':' + key, JSON.stringify(snapshot)); }
   catch (e) { toast('Storage is full. Export and clean up old records.'); }
+  updateTrainBadge();
   return Promise.resolve();
 }
 
@@ -220,6 +222,7 @@ function renderTab(name) {
   else if (name === 'routes') renderRoutesTab();
   document.getElementById('view').scrollTop = 0;
   window.scrollTo(0, 0);
+  updateTrainBadge();
 }
 
 /* Android back (and browser back) returns to the main hub instead of closing
@@ -258,6 +261,71 @@ document.addEventListener('click', (e) => {
   if (tab) switchTab(tab.dataset.view);
 });
 
+/* ============================== Header UI ============================== */
+// Network status badge, dark-mode toggle (localStorage-backed), and the
+// dynamic Training tab notification badge.
+
+const THEME_KEY = 'hub-theme';
+
+function applyTheme() {
+  let dark;
+  const saved = localStorage.getItem(THEME_KEY);
+  if (saved === 'dark' || saved === 'light') {
+    dark = saved === 'dark';
+  } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    dark = true;
+  } else {
+    dark = false;
+  }
+  const root = document.documentElement;
+  if (root && root.dataset) root.dataset.theme = dark ? 'dark' : 'light';
+}
+
+function toggleTheme() {
+  const root = document.documentElement;
+  const dark = !(root && root.dataset && root.dataset.theme === 'dark');
+  try { localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light'); } catch (e) {}
+  applyTheme();
+}
+
+function updateNetBadge() {
+  const b = document.getElementById('netBadge');
+  if (!b) return;
+  const on = navigator.onLine !== false;
+  b.classList.toggle('net-off', !on);
+  const label = b.querySelector ? b.querySelector('.net-label') : null;
+  if (label) label.textContent = on ? 'Online' : 'Offline';
+}
+
+// Same active-trainee definition used by the home "Needs Attention" inbox.
+function getActiveTrainees() {
+  return trainees.filter((t) => !t.milestones || !t.milestones['Released / sign-off'].date);
+}
+
+function updateTrainBadge() {
+  const b = document.getElementById('trainBadge');
+  if (!b) return;
+  const n = getActiveTrainees().length;
+  b.textContent = String(n);
+  b.hidden = n === 0;
+}
+
+function initHeaderUI() {
+  applyTheme();
+  const btn = document.getElementById('themeToggle');
+  if (btn) btn.addEventListener('click', toggleTheme);
+  updateNetBadge();
+  window.addEventListener('online', updateNetBadge);
+  window.addEventListener('offline', updateNetBadge);
+  if (window.matchMedia) {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = () => { if (!localStorage.getItem(THEME_KEY)) applyTheme(); };
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    else if (mq.addListener) mq.addListener(onChange);
+  }
+  updateTrainBadge();
+}
+
 /* ============================== HOME ============================== */
 
 function renderHome() {
@@ -270,7 +338,7 @@ function renderHome() {
   const nExpired = allCerts.filter((x) => certStatus(x.cert) === 'expired').length;
   const nCritical = allCerts.filter((x) => certStatus(x.cert) === 'critical').length;
 
-  const activeTrainees = trainees.filter((t) => !t.milestones || !t.milestones['Released / sign-off'].date);
+  const activeTrainees = getActiveTrainees();
   const inProgress = trainees.length;
   const released = trainees.length - activeTrainees.length;
 
@@ -376,7 +444,7 @@ function renderAttentionInbox(view) {
     });
   }
 
-  const active = trainees.filter((t) => !t.milestones || !t.milestones['Released / sign-off'].date);
+  const active = getActiveTrainees();
   for (const t of active) {
     const p = trainProgressOf(t);
     items.push({
@@ -3226,6 +3294,7 @@ window.addEventListener('beforeunload', () => {
 });
 
 initStorage().then(() => {
+  initHeaderUI();
   renderHome();
   registerSW();
 });
