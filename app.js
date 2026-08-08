@@ -1642,11 +1642,13 @@ function openScorecardPrint(name) {
    ================================================================ */
 
 const TOPICS = [
-  'Pre-trip inspection', 'Post-trip inspection', 'Vehicle walk-around / fluids',
+  'Pre-trip inspection', 'Vehicle walk-around / fluids',
+  'Load securement', 'Invoices & paperwork',
   'Safe driving & following distance', 'Backing procedures', 'Mirror use & scanning',
   'Customer interactions', 'Tablet usage & photo uploads', 'Delivery accuracy',
-  'GPS use at every stop', 'Route navigation', 'Load securement',
-  'C.O.D. handling & cash', 'Invoices & paperwork', 'Defensive driving', 'Hazmat awareness',
+  'GPS use at every stop', 'Route navigation',
+  'C.O.D. handling & cash', 'Defensive driving', 'Hazmat awareness',
+  'Post-trip inspection',
 ];
 
 const MILESTONES = [
