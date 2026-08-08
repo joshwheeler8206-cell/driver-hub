@@ -447,7 +447,7 @@ function renderHome() {
     dashCard('🗺️', 'Route Notes', String(routes.length),
       latestRoute ? 'Last: ' + latestRoute.name + ' · ' + (latestRoute.routeDate || 'no date') : 'No routes yet',
       () => switchTab('routes')),
-    dashCard('🧑‍🤝‍🧑', 'Drivers', String(roster.length),
+    dashCard('👤', 'Drivers', String(roster.length),
       roster.length ? roster.length + ' profile(s) · autofills all apps' : 'No roster yet',
       () => renderRosterView()),
     dashCard('🎉', 'Anniversaries', String(anniversariesUpcoming().length),
