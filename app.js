@@ -429,15 +429,15 @@ function renderHome() {
   const latestRoute = routes.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
 
   const grid = el('div', { class: 'dash-grid' }, [
-    dashCard('📋', 'Quarterly Reviews', String(evals.length),
-      latestEval ? 'Last: ' + latestEval.driverName + ' · ' + latestEval.evalDate : 'No reviews yet',
-      () => switchTab('review')),
-    dashCard('⏱️', 'PACE Drives', String(paceEvals.length),
-      latestPace ? 'Last: ' + (latestPace.evaluator || '—') + ' · ' + latestPace.date + (pacesDue ? ' · ' + pacesDue + ' due' : '') : 'No PACE evals yet',
-      () => switchTab('pace')),
     dashCard('🎓', 'New-Hire Training', String(inProgress),
       inProgress ? inProgress + ' trainee(s) · ' + released + ' released' : 'No trainees yet',
       () => switchTab('training')),
+    dashCard('⏱️', 'PACE Drives', String(paceEvals.length),
+      latestPace ? 'Last: ' + (latestPace.evaluator || '—') + ' · ' + latestPace.date + (pacesDue ? ' · ' + pacesDue + ' due' : '') : 'No PACE evals yet',
+      () => switchTab('pace')),
+    dashCard('📋', 'Quarterly Reviews', String(evals.length),
+      latestEval ? 'Last: ' + latestEval.driverName + ' · ' + latestEval.evalDate : 'No reviews yet',
+      () => switchTab('review')),
     dashCard('🪪', 'Certs Expiring', String(nExpired + nCritical),
       nExpired || nCritical ? (nExpired + ' expired · ' + nCritical + ' critical') : 'All certs valid',
       () => switchTab('certs')),
