@@ -953,15 +953,13 @@ const REVIEW_CHECKLIST = [
   { id: 'tablet', num: '4', title: 'Correct Tablet Usage', items: [
     'First and last name entered correctly',
     'Clear, accurate pictures taken & uploaded',
+    'GPS used for every stop (Elite GPS)',
   ]},
   { id: 'delivery', num: '5', title: 'Delivery Performance', items: [
     'Efficiency – route flow & time management',
     'Accuracy – right product, location, quantity',
   ]},
-  { id: 'gps', num: '6', title: 'GPS Usage', items: [
-    'GPS used for every stop (Elite GPS)',
-  ]},
-  { id: 'post-trip', num: '7', title: 'Post-Trip Inspection', items: [
+  { id: 'post-trip', num: '6', title: 'Post-Trip Inspection', items: [
     'Horn', 'Lights',
     'Checking Oil / Fluids + Belts and Hoses (open hood)',
     'Windshield', 'Tires', 'Brakes',
