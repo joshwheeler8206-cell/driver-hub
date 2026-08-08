@@ -98,6 +98,8 @@ const PACE_DB = 'usaf_pace_eval_db';
 const PACE_KEY = 'usaf_pace_evals_v1';
 const ROUTES_DB = 'usaf_route_notes_db';
 const ROUTES_KEY = 'usaf_route_notes_v1';
+const ROSTER_DB = 'usaf_roster_db';
+const ROSTER_KEY = 'usaf_roster_v1';
 
 const canIdb = typeof indexedDB !== 'undefined';
 const _dbCache = {};
@@ -158,6 +160,7 @@ let trainees = [];
 let drivers = [];
 let paceEvals = [];
 let routes = [];
+let roster = [];
 
 async function initStorage() {
   if (!canIdb) {
@@ -166,6 +169,7 @@ async function initStorage() {
     drivers = JSON.parse(localStorage.getItem(CERTS_DB + ':' + CERTS_KEY) || '[]') || [];
     paceEvals = JSON.parse(localStorage.getItem(PACE_DB + ':' + PACE_KEY) || '[]') || [];
     routes = JSON.parse(localStorage.getItem(ROUTES_DB + ':' + ROUTES_KEY) || '[]') || [];
+    roster = JSON.parse(localStorage.getItem(ROSTER_DB + ':' + ROSTER_KEY) || '[]') || [];
     return;
   }
   evals = (await idbGet(EVALS_DB, EVALS_KEY)) || [];
@@ -173,6 +177,7 @@ async function initStorage() {
   drivers = (await idbGet(CERTS_DB, CERTS_KEY)) || [];
   paceEvals = (await idbGet(PACE_DB, PACE_KEY)) || [];
   routes = (await idbGet(ROUTES_DB, ROUTES_KEY)) || [];
+  roster = (await idbGet(ROSTER_DB, ROSTER_KEY)) || [];
   // migrate from legacy localStorage of the standalone apps
   try {
     const legacyE = JSON.parse(localStorage.getItem(EVALS_KEY));
@@ -194,6 +199,79 @@ async function initStorage() {
     const legacyR = JSON.parse(localStorage.getItem(ROUTES_KEY));
     if (legacyR && legacyR.length && !routes.length) { routes = legacyR; await persist(ROUTES_DB, ROUTES_KEY, routes); }
   } catch (e) {}
+}
+
+/* ============================== Driver Roster (shared) ============================== */
+// Stored in usaf_roster_db / usaf_roster_v1 — the SAME IndexedDB all six AutoForce
+// apps read (they share an origin on GitHub Pages). One entry autofills every app.
+// Fields: { name, license, warehouse, hireDate, trainer }.
+
+function rosterFind(name) {
+  const n = String(name || '').trim().toLowerCase();
+  return roster.find((r) => String(r.name || '').trim().toLowerCase() === n) || null;
+}
+
+function rosterNames() {
+  return roster.map((r) => r.name).filter(Boolean).sort();
+}
+
+function rosterUpsert(entry) {
+  const name = String((entry && entry.name) || '').trim();
+  if (!name) return;
+  const existing = rosterFind(name);
+  if (existing) {
+    for (const k of ['license', 'warehouse', 'hireDate', 'trainer']) {
+      const v = String((entry && entry[k]) || '').trim();
+      if (v) existing[k] = v;
+    }
+  } else {
+    roster.push({
+      name,
+      license: String((entry && entry.license) || '').trim(),
+      warehouse: String((entry && entry.warehouse) || '').trim(),
+      hireDate: String((entry && entry.hireDate) || '').trim(),
+      trainer: String((entry && entry.trainer) || '').trim(),
+    });
+  }
+  persist(ROSTER_DB, ROSTER_KEY, roster);
+}
+
+function ensureRosterDatalist() {
+  let dl = document.getElementById('roster-names');
+  if (!dl) {
+    dl = el('datalist', { id: 'roster-names' });
+    document.body.appendChild(dl);
+  }
+  dl.innerHTML = '';
+  for (const r of roster) dl.appendChild(el('option', { value: r.name }));
+  return dl;
+}
+
+// Name input with typeahead; when it matches a roster driver, fills the given
+// field ids from the roster (only when the target field is still empty).
+function rosterField(labelText, id, value, fields, extra = {}) {
+  const input = el('input', { type: 'text', id, value, list: 'roster-names', autocomplete: 'off', ...extra });
+  const fill = () => {
+    const r = rosterFind(input.value);
+    if (!r) return;
+    for (const [fid, prop] of Object.entries(fields)) {
+      const n = document.getElementById(fid);
+      if (n && !n.value) n.value = r[prop] || '';
+    }
+  };
+  input.addEventListener('input', fill);
+  input.addEventListener('change', fill);
+  return el('label', { class: 'field' }, [el('span', { class: 'field-label' }, [labelText]), input]);
+}
+
+function nextAnniversary(hireDate, fromISO) {
+  const h = new Date(String(hireDate || '') + 'T00:00:00');
+  if (isNaN(h)) return null;
+  const base = new Date(String(fromISO || todayISO()) + 'T00:00:00');
+  let year = base.getFullYear();
+  let ann = new Date(year, h.getMonth(), h.getDate());
+  if (ann < base) { year++; ann = new Date(year, h.getMonth(), h.getDate()); }
+  return { date: ann, years: year - h.getFullYear() };
 }
 
 /* ============================== Router ============================== */
@@ -369,6 +447,12 @@ function renderHome() {
     dashCard('🗺️', 'Route Notes', String(routes.length),
       latestRoute ? 'Last: ' + latestRoute.name + ' · ' + (latestRoute.routeDate || 'no date') : 'No routes yet',
       () => switchTab('routes')),
+    dashCard('🧑‍🤝‍🧑', 'Drivers', String(roster.length),
+      roster.length ? roster.length + ' profile(s) · autofills all apps' : 'No roster yet',
+      () => renderRosterView()),
+    dashCard('🎉', 'Anniversaries', String(anniversariesUpcoming().length),
+      anniversariesUpcoming().length ? anniversariesUpcoming().map((a) => a.name).join(', ') : 'None in next 60 days',
+      () => renderRosterView()),
   ]);
   view.appendChild(grid);
 
@@ -383,6 +467,9 @@ function renderHome() {
       el('button', { class: 'btn', onclick: () => { switchTab('training'); addTrainee(); } }, ['+ Add Trainee']),
       el('button', { class: 'btn', onclick: () => { switchTab('certs'); addDriver(); } }, ['+ Add Driver Cert']),
       el('button', { class: 'btn', onclick: () => { state.routes.sub = 'new'; switchTab('routes'); } }, ['+ New Route']),
+    ]),
+    el('div', { class: 'actions', style: 'margin-top:8px' }, [
+      el('button', { class: 'btn primary', onclick: () => renderRosterView() }, ['+ Driver Profile']),
     ]),
   ]));
 
@@ -401,6 +488,8 @@ function renderHome() {
     ]),
   ]));
 
+  view.appendChild(renderAnniversariesCard());
+
   if (!evals.length && !trainees.length && !drivers.length) {
     view.appendChild(el('div', { class: 'empty' }, [
       el('div', { class: 'big' }, ['🚚']),
@@ -415,6 +504,118 @@ function renderHome() {
     el('span', { class: 'fl' }, ['U.S. AutoForce']),
     ' · Driver Hub v1.0 · Field Operations · Data stays on this device',
   ]));
+}
+
+function anniversariesUpcoming(fromISO, windowDays) {
+  const win = windowDays == null ? 60 : windowDays;
+  const out = [];
+  for (const r of roster) {
+    const a = nextAnniversary(r.hireDate, fromISO);
+    if (!a) continue;
+    const days = Math.round((a.date - new Date(String(fromISO || todayISO()) + 'T00:00:00')) / 86400000);
+    if (days >= 0 && days <= win) out.push({ name: r.name, days, years: a.years, date: a.date, driver: r });
+  }
+  out.sort((a, b) => a.days - b.days);
+  return out;
+}
+
+function renderAnniversariesCard() {
+  const list = anniversariesUpcoming();
+  const rows = list.length ? list.map((a) => {
+    const on = a.date.getMonth() + 1 + '/' + a.date.getDate();
+    const when = a.days === 0 ? 'today' : a.days === 1 ? 'tomorrow' : 'in ' + a.days + ' days';
+    const plural = a.years === 1 ? ' year' : ' years';
+    return el('div', { class: 'card rec' }, [
+      el('div', { class: 'rec-main' }, [
+        el('div', {}, [
+          el('div', { class: 'rec-name' }, [a.name + ' — ' + a.years + plural]),
+          el('div', { class: 'rec-meta' }, [on + ' · ' + when + (a.driver.warehouse ? ' · ' + a.driver.warehouse : '')]),
+        ]),
+      ]),
+    ]);
+  }) : [el('div', { class: 'empty small' }, ['No work anniversaries in the next 60 days. Add a hire date on a driver profile and the trainer gets reminded each year.'])];
+  return el('div', { class: 'card' }, [
+    el('h2', { class: 'card-title' }, ['🎉 Work Anniversaries']),
+    el('p', { class: 'sub', style: 'margin:0 0 8px' }, ['Upcoming yearly hire-date anniversaries — celebrate with your team.']),
+    ...rows,
+    el('div', { class: 'actions', style: 'margin-top:10px' }, [
+      el('button', { class: 'btn small', onclick: () => renderRosterView() }, ['Manage Drivers / Hire Dates']),
+    ]),
+  ]);
+}
+
+/* ============================== Driver Roster view ============================== */
+
+function renderRosterView() {
+  setAccent('#0e7490');
+  const view = document.getElementById('view');
+  view.innerHTML = '';
+  ensureRosterDatalist();
+  view.appendChild(el('div', { class: 'route-head' }, [
+    el('button', { class: 'btn ghost small', onclick: () => renderHome() }, ['← Home']),
+    el('button', { class: 'btn ghost small', onclick: () => exportRoster() }, ['Backup']),
+  ]));
+
+  view.appendChild(el('div', { class: 'card' }, [
+    el('h2', { class: 'card-title' }, ['Driver Roster']),
+    el('p', { class: 'sub', style: 'margin:0 0 8px' }, ['One profile per driver. Every AutoForce app autofills Name, Lic #, Warehouse, Hire Date and Trainer from here.']),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Driver Name']), el('input', { id: 'rosName', list: 'roster-names', autocomplete: 'off' })]),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['License #']), el('input', { id: 'rosLicense', placeholder: 'e.g. DRV-1024' })]),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Warehouse / Location']), el('input', { id: 'rosWarehouse', placeholder: 'e.g. OKC North' })]),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Hire Date']), el('input', { id: 'rosHire', type: 'date' })]),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Trainer']), el('input', { id: 'rosTrainer', placeholder: 'e.g. J. Kowalski' })]),
+    el('div', { class: 'actions' }, [
+      el('button', { class: 'btn primary big', onclick: () => addRosterEntry() }, ['+ Add Driver']),
+    ]),
+  ]));
+
+  if (roster.length) {
+    view.appendChild(el('h2', { class: 'page-title', style: 'margin:14px 0 10px' }, ['On the roster (' + roster.length + ')']));
+    const sorted = [...roster].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    view.appendChild(el('div', {}, sorted.map(rosterCard)));
+  } else {
+    view.appendChild(el('div', { class: 'empty' }, ['No drivers on the roster yet. Add one above — every app will autofill from here.']));
+  }
+}
+
+function rosterCard(r) {
+  const editable = (prop, ph) => el('input', { type: prop === 'hireDate' ? 'date' : 'text', value: r[prop] || '', placeholder: ph, oninput: (e) => { r[prop] = e.target.value; persist(ROSTER_DB, ROSTER_KEY, roster); } });
+  return el('div', { class: 'card' }, [
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Driver Name']), editable('name', 'Full name')]),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['License #']), editable('license', 'e.g. DRV-1024')]),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Warehouse / Location']), editable('warehouse', 'e.g. OKC North')]),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Hire Date']), editable('hireDate', '')]),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Trainer']), editable('trainer', 'e.g. J. Kowalski')]),
+    el('div', { class: 'actions' }, [el('button', { class: 'btn ghost small danger', onclick: () => deleteRosterEntry(r.name) }, ['Delete'])]),
+  ]);
+}
+
+function addRosterEntry() {
+  const name = document.getElementById('rosName').value.trim();
+  if (!name) { toast('Enter a driver name.'); return; }
+  if (rosterFind(name)) { toast('That driver is already on the roster.'); return; }
+  roster.push({
+    name,
+    license: document.getElementById('rosLicense').value.trim(),
+    warehouse: document.getElementById('rosWarehouse').value.trim(),
+    hireDate: document.getElementById('rosHire').value,
+    trainer: document.getElementById('rosTrainer').value.trim(),
+  });
+  persist(ROSTER_DB, ROSTER_KEY, roster);
+  renderRosterView();
+  toast('Added ' + name + ' to the roster.');
+}
+
+function deleteRosterEntry(name) {
+  if (!confirm('Remove ' + name + ' from the roster? Other apps will stop autofilling their details.')) return;
+  roster = roster.filter((r) => r.name !== name);
+  persist(ROSTER_DB, ROSTER_KEY, roster);
+  renderRosterView();
+}
+
+function exportRoster() {
+  if (!roster.length) { toast('Roster is empty.'); return; }
+  download('driver-roster-' + todayISO() + '.json', JSON.stringify(roster, null, 2));
 }
 
 function renderAttentionInbox(view) {
@@ -807,6 +1008,7 @@ function newEval() {
     createdAt: new Date().toISOString(),
     driverName: '',
     driverId: '',
+    warehouse: '',
     evalDate: todayISO(),
     assessor: '',
     areas,
@@ -857,12 +1059,14 @@ function field(labelText, id, type, value, extra = {}) {
 function renderReviewFormInto(view) {
   if (!state.review.current) state.review.current = newEval();
   const current = state.review.current;
+  ensureRosterDatalist();
   const form = el('form', { id: 'eval-form' });
 
   form.appendChild(el('section', { class: 'card' }, [
     el('h2', { class: 'card-title' }, ['Driver Information']),
-    field('Driver Name', 'driverName', 'text', current.driverName, { required: true }),
-    field('Driver ID#', 'driverId', 'text', current.driverId),
+    rosterField('Driver Name', 'driverName', current.driverName, { driverId: 'license', warehouse: 'warehouse', assessor: 'trainer' }, { required: true }),
+    field('Driver ID# / Lic.#', 'driverId', 'text', current.driverId),
+    field('Warehouse / Location', 'warehouse', 'text', current.warehouse),
     field('Review Date', 'evalDate', 'date', current.evalDate, { required: true }),
     field('Assessor / Trainer', 'assessor', 'text', current.assessor),
   ]));
@@ -963,6 +1167,7 @@ function saveEval() {
   const current = state.review.current;
   current.driverName = formValue('driverName');
   current.driverId = formValue('driverId');
+  current.warehouse = formValue('warehouse');
   current.evalDate = formValue('evalDate');
   current.assessor = formValue('assessor');
   const sigDate = document.getElementById('sigDate');
@@ -979,6 +1184,7 @@ function saveEval() {
   else evals.push(JSON.parse(JSON.stringify(current)));
 
   persist(EVALS_DB, EVALS_KEY, evals);
+  rosterUpsert({ name: current.driverName, license: current.driverId, warehouse: current.warehouse, trainer: current.assessor });
   const niCount = countNI(current);
   toast('Saved' + (niCount ? ' – ' + niCount + ' item(s) marked Needs Improvement' : '') + '.');
   state.review.current = null;
@@ -1125,7 +1331,9 @@ function reportHtml(r) {
     '<td class="lbl">DRIVER NAME</td><td>' + esc(r.driverName) + '</td>' +
     '<td class="lbl">DRIVER ID#</td><td>' + esc(r.driverId) + '</td></tr><tr>' +
     '<td class="lbl">REVIEW DATE</td><td>' + esc(r.evalDate) + '</td>' +
-    '<td class="lbl">ASSESSOR / TRAINER</td><td>' + esc(r.assessor) + '</td></tr></table>' +
+    '<td class="lbl">ASSESSOR / TRAINER</td><td>' + esc(r.assessor) + '</td></tr>' +
+    (r.warehouse ? '<tr><td class="lbl">WAREHOUSE / LOCATION</td><td>' + esc(r.warehouse) + '</td></tr>' : '') +
+    '</table>' +
     areas +
     '<div class="overall"><h3>Overall Performance Notes / Coaching Points</h3><p>' + (r.overallNotes ? esc(r.overallNotes) : '&nbsp;') + '</p></div>' +
     '<table class="sigs"><tr>' +
@@ -1612,11 +1820,12 @@ function renderTraineesInto(view) {
 }
 
 function addTrainee() {
+  ensureRosterDatalist();
   const view = document.getElementById('view');
   view.innerHTML = '';
   view.appendChild(el('div', { class: 'card' }, [
     el('h2', {}, ['New Trainee']),
-    el('div', { class: 'field' }, [el('label', { class: 'field-label' }, ['Trainee name']), el('input', { id: 'newName', placeholder: 'Full name', autocomplete: 'off' })]),
+    rosterField('Trainee name', 'newName', '', { newTrainer: 'trainer', newHire: 'hireDate' }, { placeholder: 'Full name' }),
     el('div', { class: 'field' }, [el('label', { class: 'field-label' }, ['Hire date']), el('input', { id: 'newHire', type: 'date' })]),
     el('div', { class: 'field' }, [el('label', { class: 'field-label' }, ['Trainer']), el('input', { id: 'newTrainer', placeholder: 'Your name', autocomplete: 'off' })]),
     el('div', { class: 'btn-row' }, [
@@ -1630,8 +1839,11 @@ function addTrainee() {
 function saveNewTrainee() {
   const name = document.getElementById('newName').value.trim();
   if (!name) { toast('Enter a name'); return; }
-  trainees.push(newTrainee(name, document.getElementById('newHire').value, document.getElementById('newTrainer').value.trim()));
+  const trainer = document.getElementById('newTrainer').value.trim();
+  const hireDate = document.getElementById('newHire').value;
+  trainees.push(newTrainee(name, hireDate, trainer));
   persist(TRAIN_DB, TRAIN_KEY, trainees);
+  rosterUpsert({ name, hireDate, trainer });
   openTrainee(trainees[trainees.length - 1].id);
 }
 
@@ -2104,13 +2316,10 @@ function renderCertDriver() {
   ]));
 
   view.appendChild(el('div', { class: 'card' }, [
+    rosterField('Driver Name', 'driverName', d.name, { driverId: 'license' }, { oninput: (e) => { d.name = e.target.value; persist(CERTS_DB, CERTS_KEY, drivers); if (d.driverId) rosterUpsert({ name: d.name, license: d.driverId }); } }),
     el('div', { class: 'field' }, [
-      el('span', { class: 'field-label' }, ['Driver Name']),
-      el('input', { type: 'text', id: 'driverName', placeholder: 'Full name', value: d.name, oninput: (e) => { d.name = e.target.value; persist(CERTS_DB, CERTS_KEY, drivers); } }),
-    ]),
-    el('div', { class: 'field' }, [
-      el('span', { class: 'field-label' }, ['Driver ID#']),
-      el('input', { type: 'text', id: 'driverId', placeholder: 'e.g. 4412', value: d.driverId, oninput: (e) => { d.driverId = e.target.value; persist(CERTS_DB, CERTS_KEY, drivers); } }),
+      el('span', { class: 'field-label' }, ['Driver ID# / Lic.#']),
+      el('input', { type: 'text', id: 'driverId', placeholder: 'e.g. 4412', value: d.driverId, oninput: (e) => { d.driverId = e.target.value; persist(CERTS_DB, CERTS_KEY, drivers); if (d.name) rosterUpsert({ name: d.name, license: d.driverId }); } }),
     ]),
     el('button', { class: 'btn ghost small danger', onclick: () => deleteCertDriver() }, ['Delete driver']),
   ]));
