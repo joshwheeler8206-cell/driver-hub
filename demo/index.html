@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<meta name="description" content="U.S. AutoForce Driver Hub - quarterly reviews, new-hire training, certifications and route notes in one app">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Driver Hub">
+<title>U.S. AutoForce &middot; Driver Hub</title>
+<link rel="apple-touch-startup-image" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)" href="icons/splash/splash-640x1136.png">
+<link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)" href="icons/splash/splash-750x1334.png">
+<link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3)" href="icons/splash/splash-1242x2208.png">
+<link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)" href="icons/splash/splash-1125x2436.png">
+<link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)" href="icons/splash/splash-828x1792.png">
+<link rel="apple-touch-startup-image" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)" href="icons/splash/splash-1170x2532.png">
+<link rel="apple-touch-startup-image" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3)" href="icons/splash/splash-1284x2778.png">
+<link rel="apple-touch-startup-image" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)" href="icons/splash/splash-1290x2796.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="hub" class="hub">
+
+<header class="app-header">
+  <div class="brand">
+    <img src="icons/logo-tile.png" alt="U.S. AutoForce" class="brand-logo">
+    <div class="brand-text">
+      <h1>Driver Hub</h1>
+      <p>Reviews &middot; Training &middot; Certs &middot; Routes</p>
+    </div>
+  </div>
+  <div class="header-actions">
+    <span id="netBadge" class="net-badge net-on" role="status" title="Connection status">
+      <span class="net-label">Online</span>
+    </span>
+    <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle light/dark mode">
+      <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="view" class="view">
+  <!-- Rendered by app.js -->
+</main>
+
+<nav class="tabbar">
+  <button class="tab active" data-view="home" aria-label="Home">
+    <svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+    <span>Home</span>
+  </button>
+  <button class="tab" data-view="review" aria-label="Review">
+    <svg viewBox="0 0 24 24"><path d="M5 3h14a1 1 0 0 1 1 1v17l-3-2-3 2-3-2-3 2-3-2-3 2V4a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 8h6M9 12h6" stroke="currentColor" stroke-width="2"/></svg>
+    <span>Review</span>
+  </button>
+  <button class="tab" data-view="pace" aria-label="PACE">
+    <svg viewBox="0 0 24 24"><path d="M12 4a8 8 0 1 0 8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 8v4l3 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><rect x="11" y="3" width="2" height="4" rx="1" fill="currentColor"/></svg>
+    <span>PACE</span>
+  </button>
+  <button class="tab" data-view="training" aria-label="Training">
+    <svg viewBox="0 0 24 24"><path d="M4 19h16M4 19l1-5 6 1-6 4zM20 19l-1-6-5 1 5 5zM12 10l2-5 3 3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+    <span>Training</span>
+    <span id="trainBadge" class="tab-badge" hidden>0</span>
+  </button>
+  <button class="tab" data-view="certs" aria-label="Certs">
+    <svg viewBox="0 0 24 24"><path d="M12 3l2 4 4 .6-3 2.8.8 4.4L12 12.6 8.2 14.8l.8-4.4-3-2.8L10 7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 18l4 2 4-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <span>Certs</span>
+  </button>
+  <button class="tab" data-view="routes" aria-label="Routes">
+    <svg viewBox="0 0 24 24"><circle cx="6" cy="19" r="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="5" r="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 17c0-6 4-8 6-11 2 3 6 5 6 11" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+    <span>Routes</span>
+  </button>
+</nav>
+
+<div id="toast" class="toast" role="status"></div>
+
+</div>
+<script src="idbshim.js"></script>
+  <script src="seed.js"></script>
+  <script src="demo_click.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
