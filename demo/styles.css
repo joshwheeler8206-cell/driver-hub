@@ -505,7 +505,7 @@ textarea.notes { resize: vertical; min-height: 44px; }
 .co-row { display: flex; align-items: center; gap: 6px; padding: 7px 14px; border-top: 1px solid var(--line); }
 .co-row:first-child { border-top: none; }
 .co-row.co-th { padding: 8px 14px; background: #f8fafc; font-size: 10.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
-.co-item { flex: 1; min-width: 0; font-size: 13px; }
+.co-item { flex: 1; min-width: 0; font-size: 13px; overflow-wrap: break-word; }
 .co-drv, .co-tr { width: 52px; flex-shrink: 0; }
 .co-date { width: 118px; flex-shrink: 0; }
 .co-input {
@@ -746,4 +746,12 @@ textarea.notes { resize: vertical; min-height: 44px; }
 @media print {
   .tabbar, .app-header, .toast, .actions, .btn, .backbar, .sc-sel { display: none !important; }
   .view { padding: 0; max-width: none; }
+}
+
+/* ---------- Check-off: stack on phones so item text never gets squeezed ---------- */
+@media (max-width: 480px) {
+  .co-row { flex-wrap: wrap; padding: 8px 12px; }
+  .co-row .co-item { flex: 1 1 100%; overflow-wrap: break-word; }
+  .co-row.co-th { display: none; }
+  .co-drv, .co-tr, .co-date { flex: 1 1 0; width: auto; }
 }

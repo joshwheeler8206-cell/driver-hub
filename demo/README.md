@@ -1,4 +1,4 @@
-# AutoForce Driver Hub
+# U.S. AutoForce Driver Hub
 <p align="center"><img src="icons/logo-tile.png" alt="U.S. AutoForce" width="340"></p>
 
 One app for the whole driver lifecycle. Combines **Quarterly Review** (ride-along evals), **New-Hire Training**, and **Certifications** — sharing the same local data stores as the standalone apps so everything stays in sync.
@@ -17,6 +17,12 @@ The Hub is a PWA — works in any modern browser and installs to your home scree
 - **Live site:** https://joshwheeler8206-cell.github.io/driver-hub/
 - **Android APK:** download from the latest release below (signed, standalone app).
 - **iPhone / iPad:** open the live site in Safari, tap **Share** → **Add to Home Screen** (fullscreen PWA; use Safari for the print/PDF buttons).
+
+## Demo
+
+See the Hub pre-loaded with sample data (5 drivers, reviews, training check-offs, certs, PACE, and routes):
+
+- **Live demo:** https://joshwheeler8206-cell.github.io/driver-hub/demo/
 
 ## Companion apps
 
