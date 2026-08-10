@@ -428,6 +428,16 @@ function renderHome() {
 
   const latestRoute = routes.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
 
+  if (!evals.length && !trainees.length && !drivers.length) {
+    view.appendChild(el('div', { class: 'empty' }, [
+      el('div', { class: 'big' }, ['🚚']),
+      el('div', { class: 'title' }, ['Welcome to the Driver Hub']),
+      'Everything in one place: quarterly ride-along reviews, new-hire training sign-offs, certification expirations, and daily route notes. Add your first record above.',
+    ]));
+  } else {
+    renderAttentionInbox(view);
+  }
+
   const grid = el('div', { class: 'dash-grid' }, [
     dashCard('🎓', 'New-Hire Training', String(inProgress),
       inProgress ? inProgress + ' trainee(s) · ' + released + ' released' : 'No trainees yet',
@@ -489,16 +499,6 @@ function renderHome() {
   ]));
 
   view.appendChild(renderAnniversariesCard());
-
-  if (!evals.length && !trainees.length && !drivers.length) {
-    view.appendChild(el('div', { class: 'empty' }, [
-      el('div', { class: 'big' }, ['🚚']),
-      el('div', { class: 'title' }, ['Welcome to the Driver Hub']),
-      'Everything in one place: quarterly ride-along reviews, new-hire training sign-offs, certification expirations, and daily route notes. Add your first record above.',
-    ]));
-  } else {
-    renderAttentionInbox(view);
-  }
 
   view.appendChild(el('footer', { class: 'app-footer' }, [
     el('span', { class: 'fl' }, ['U.S. AutoForce']),
