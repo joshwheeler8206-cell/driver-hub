@@ -2010,11 +2010,20 @@ function completeCoGroup(tr, g) {
     if (!initials) return;
     tr.coInitials = initials;
   }
+  let driverInit = (tr.coDriverInitials || '').toUpperCase();
+  const needDriver = pending.some((it) => !coItem(tr, it).driver);
+  if (needDriver && !driverInit) {
+    const v = prompt('Driver initials for this group?', '');
+    if (v === null) return;
+    driverInit = v.trim().toUpperCase();
+    if (!driverInit) return;
+    tr.coDriverInitials = driverInit;
+  }
   for (const it of pending) {
     const s = tr.checkoffs[it];
     s.date = todayISO();
     s.trainer = initials;
-    if (!s.driver) s.driver = initials;
+    if (!s.driver) s.driver = driverInit;
   }
   persist(TRAIN_DB, TRAIN_KEY, trainees);
   renderTraineeDetail();
