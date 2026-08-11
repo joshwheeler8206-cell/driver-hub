@@ -2,7 +2,7 @@
 
 /* ================================================================
    AutoForce Driver Hub
-   Combines: Quarterly Review (ride-along evals), New-Hire Training,
+   Combines: Driver Review (ride-along evals), New-Hire Training,
    and Certifications. Reads/writes the SAME IndexedDB stores as the
    standalone apps so data stays in sync.
    ================================================================ */
@@ -432,7 +432,7 @@ function renderHome() {
     view.appendChild(el('div', { class: 'empty' }, [
       el('div', { class: 'big' }, ['🚚']),
       el('div', { class: 'title' }, ['Welcome to the Driver Hub']),
-      'Everything in one place: quarterly ride-along reviews, new-hire training sign-offs, certification expirations, and daily route notes. Add your first record above.',
+      'Everything in one place: driver ride-along reviews, new-hire training sign-offs, certification expirations, and daily route notes. Add your first record above.',
     ]));
   } else {
     renderAttentionInbox(view);
@@ -445,7 +445,7 @@ function renderHome() {
     dashCard('⏱️', 'PACE Drives', String(paceEvals.length),
       latestPace ? 'Last: ' + (latestPace.evaluator || '—') + ' · ' + latestPace.date + (pacesDue ? ' · ' + pacesDue + ' due' : '') : 'No PACE evals yet',
       () => switchTab('pace')),
-    dashCard('📋', 'Quarterly Reviews', String(evals.length),
+    dashCard('📋', 'Driver Reviews', String(evals.length),
       latestEval ? 'Last: ' + latestEval.driverName + ' · ' + latestEval.evalDate : 'No reviews yet',
       () => switchTab('review')),
     dashCard('🪪', 'Certs Expiring', String(nExpired + nCritical),
@@ -706,7 +706,7 @@ function exportEvalsCsv() {
       }
     }
   }
-  downloadCsv('quarterly-reviews-' + todayISO() + '.csv', rows);
+  downloadCsv('driver-reviews-' + todayISO() + '.csv', rows);
 }
 
 function exportCertsCsv() {
@@ -827,7 +827,7 @@ function renderDossierFor(name, body) {
 
   const sec = (title) => el('div', { class: 'rsec' }, [el('h3', {}, [title])]);
 
-  const revSec = sec('Quarterly Reviews (' + reviews.length + ')');
+  const revSec = sec('Driver Reviews (' + reviews.length + ')');
   if (!reviews.length) revSec.appendChild(el('p', { class: 'rsub' }, ['No reviews on file.']));
   else {
     const tbl = el('table', { class: 'rtbl' });
@@ -915,7 +915,7 @@ function renderDossierFor(name, body) {
 }
 
 /* ================================================================
-   REVIEW MODULE (Quarterly Review) - shared with driver-eval app
+   REVIEW MODULE (Driver Review) - shared with driver-eval app
    ================================================================ */
 
 const REVIEW_CHECKLIST = [
@@ -1224,7 +1224,7 @@ function exportOneEval(r) {
 
 function exportAllEvals() {
   if (!evals.length) { toast('Nothing to export yet.'); return; }
-  download('quarterly-reviews-' + todayISO() + '.json', JSON.stringify(evals, null, 2));
+  download('driver-reviews-' + todayISO() + '.json', JSON.stringify(evals, null, 2));
 }
 
 function renderRecordsInto(view) {
@@ -1288,7 +1288,7 @@ function reportHtml(r) {
       (notes ? '<p class="notes"><strong>Notes:</strong> ' + esc(notes) + '</p>' : '') +
       '</section>';
   }
-  const title = 'Quarterly Driver Review';
+  const title = 'Driver Review';
   return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + title + '</title>' +
     '<style>' +
     '@page { size: Letter; margin: 14mm 12mm; }' +
@@ -1339,7 +1339,7 @@ function reportHtml(r) {
     '<td><div class="sigbox">' + sigImg(r.assessorSig) + '</div><div class="sigline">ASSESSOR SIGNATURE</div></td>' +
     '<td><div class="sigbox"><span style="line-height:52px">' + esc(r.sigDate || r.evalDate || '') + '</span></div><div class="sigline">DATE</div></td>' +
     '</tr></table>' +
-    '<div class="foot">U.S. AutoForce &bull; Quarterly Driver Review &bull; Confidential &bull; SAT = Satisfactory | NI = Needs Improvement &bull; Elite GPS for every stop &bull; App pictures show hood open for fluids</div>' +
+    '<div class="foot">U.S. AutoForce &bull; Driver Review &bull; Confidential &bull; SAT = Satisfactory | NI = Needs Improvement &bull; Elite GPS for every stop &bull; App pictures show hood open for fluids</div>' +
     '<div class="noprint" style="text-align:center; margin-top:20px"><button onclick="window.print()" style="font-size:16px;padding:10px 24px">Print / Save as PDF</button></div>' +
     '</body></html>';
 }
@@ -1456,7 +1456,7 @@ function printQuarter(key) {
     '</style></head><body>' +
     '<div style="margin-bottom:12px;border-bottom:2px solid #1d4ed8;padding-bottom:8px"><img src="' + AF_LOGO + '" style="height:44px;width:auto;border-radius:6px" alt="U.S. AutoForce"></div>' +
     '<div style="margin-bottom:12px;border-bottom:2px solid #1d4ed8;padding-bottom:8px"><img src="' + AF_LOGO + '" style="height:44px;width:auto;border-radius:6px" alt="U.S. AutoForce"></div>' +
-    '<div class="head"><h1>Quarterly Driver Review Summary</h1><p>' + esc(key) + ' &bull; U.S. AutoForce &bull; Confidential</p></div>' +
+    '<div class="head"><h1>Driver Review Summary</h1><p>' + esc(key) + ' &bull; U.S. AutoForce &bull; Confidential</p></div>' +
     rows.join('') +
     '<div class="foot">Needs Improvement items flagged during ' + esc(key) + ' ride-alongs. Use as coaching focus areas.</div>' +
     '</body></html>';

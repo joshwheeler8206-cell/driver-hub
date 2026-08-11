@@ -421,7 +421,7 @@ textarea.notes { resize: vertical; min-height: 44px; }
 }
 .subtab.active { background: var(--accent); color: #fff; }
 
-/* ---------- Quarterly ---------- */
+/* ---------- Review summary ---------- */
 .qsel { margin-bottom: 12px; }
 .qsel-select { font-size: 15px; }
 .q-summary { display: flex; gap: 10px; margin-bottom: 12px; }

@@ -1,7 +1,7 @@
 {
   "name": "AutoForce Driver Hub",
   "short_name": "Driver Hub",
-  "description": "U.S. AutoForce - quarterly reviews, new-hire training and driver certifications in one place.",
+  "description": "U.S. AutoForce - driver reviews, new-hire training and driver certifications in one place.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

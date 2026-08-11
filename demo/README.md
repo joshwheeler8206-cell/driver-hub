@@ -1,11 +1,11 @@
 # U.S. AutoForce Driver Hub
 <p align="center"><img src="icons/logo-tile.png" alt="U.S. AutoForce" width="340"></p>
 
-One app for the whole driver lifecycle. Combines **Quarterly Review** (ride-along evals), **New-Hire Training**, and **Certifications** — sharing the same local data stores as the standalone apps so everything stays in sync.
+One app for the whole driver lifecycle. Combines **Driver Review** (ride-along evals), **New-Hire Training**, and **Certifications** — sharing the same local data stores as the standalone apps so everything stays in sync.
 
 ## Features
 
-- **Quarterly Review** – ride-along scoring by category, driver notes, signature capture, records list, quarterly filters, and a trends/scorecard view.
+- **Driver Review** – ride-along scoring by category, driver notes, signature capture, records list, quarterly filters, and a trends/scorecard view.
 - **New-Hire Training** – trainee roster, topic & milestone tracking (1-5 rating + comments), and a printable driver training record.
 - **Certifications** – per-driver certs with expiry tracking, 90/30-day warnings, and a dashboard alert list.
 - **Home dashboard** – quick actions and "needs attention" alerts across all three modules.
