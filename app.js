@@ -204,7 +204,7 @@ async function initStorage() {
 /* ============================== Driver Roster (shared) ============================== */
 // Stored in usaf_roster_db / usaf_roster_v1 — the SAME IndexedDB all six AutoForce
 // apps read (they share an origin on GitHub Pages). One entry autofills every app.
-// Fields: { name, license, warehouse, hireDate, trainer }.
+// Fields: { name, license, warehouse, phone, hireDate, trainer }.
 
 function rosterFind(name) {
   const n = String(name || '').trim().toLowerCase();
@@ -220,7 +220,7 @@ function rosterUpsert(entry) {
   if (!name) return;
   const existing = rosterFind(name);
   if (existing) {
-    for (const k of ['license', 'warehouse', 'hireDate', 'trainer']) {
+    for (const k of ['license', 'warehouse', 'phone', 'hireDate', 'trainer']) {
       const v = String((entry && entry[k]) || '').trim();
       if (v) existing[k] = v;
     }
@@ -229,6 +229,7 @@ function rosterUpsert(entry) {
       name,
       license: String((entry && entry.license) || '').trim(),
       warehouse: String((entry && entry.warehouse) || '').trim(),
+      phone: String((entry && entry.phone) || '').trim(),
       hireDate: String((entry && entry.hireDate) || '').trim(),
       trainer: String((entry && entry.trainer) || '').trim(),
     });
@@ -562,6 +563,7 @@ function renderRosterView() {
     el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Driver Name']), el('input', { id: 'rosName', list: 'roster-names', autocomplete: 'off' })]),
     el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['License #']), el('input', { id: 'rosLicense', placeholder: 'e.g. DRV-1024' })]),
     el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Warehouse / Location']), el('input', { id: 'rosWarehouse', placeholder: 'e.g. OKC North' })]),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Driver Phone #']), el('input', { id: 'rosPhone', placeholder: 'e.g. (555) 123-4567', type: 'tel' })]),
     el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Hire Date']), el('input', { id: 'rosHire', type: 'date' })]),
     el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Trainer']), el('input', { id: 'rosTrainer', placeholder: 'e.g. J. Kowalski' })]),
     el('div', { class: 'actions' }, [
@@ -584,6 +586,7 @@ function rosterCard(r) {
     el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Driver Name']), editable('name', 'Full name')]),
     el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['License #']), editable('license', 'e.g. DRV-1024')]),
     el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Warehouse / Location']), editable('warehouse', 'e.g. OKC North')]),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Driver Phone #']), editable('phone', 'e.g. (555) 123-4567')]),
     el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Hire Date']), editable('hireDate', '')]),
     el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Trainer']), editable('trainer', 'e.g. J. Kowalski')]),
     el('div', { class: 'actions' }, [el('button', { class: 'btn ghost small danger', onclick: () => deleteRosterEntry(r.name) }, ['Delete'])]),
@@ -598,6 +601,7 @@ function addRosterEntry() {
     name,
     license: document.getElementById('rosLicense').value.trim(),
     warehouse: document.getElementById('rosWarehouse').value.trim(),
+    phone: document.getElementById('rosPhone').value.trim(),
     hireDate: document.getElementById('rosHire').value,
     trainer: document.getElementById('rosTrainer').value.trim(),
   });
@@ -822,8 +826,9 @@ function renderDossierFor(name, body) {
   ]));
 
   const report = el('div', { class: 'pace-report' }, []);
+  const rd = rosterFind(name);
   report.appendChild(el('h2', {}, ['Driver Dossier']));
-  report.appendChild(el('p', { class: 'rsub' }, [name + ' · U.S. AutoForce · Generated ' + new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })]));
+  report.appendChild(el('p', { class: 'rsub' }, [name + ' · U.S. AutoForce · Generated ' + new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) + (rd && rd.phone ? ' · ☎ ' + rd.phone : '')]));
 
   const sec = (title) => el('div', { class: 'rsec' }, [el('h3', {}, [title])]);
 
