@@ -878,13 +878,38 @@ function mergeStore(field, incoming, existing) {
   return { out, added };
 }
 
+// A hand-edited or truncated backup can contain records that are not objects, or
+// that are missing the fields the rest of the app assumes exist. Those throw deep
+// inside rendering and blank the screen, so normalise on the way in.
+function sanitizeImport(field, arr) {
+  if (!Array.isArray(arr)) return [];
+  const out = [];
+  for (const r of arr) {
+    if (!r || typeof r !== 'object' || Array.isArray(r)) continue;
+    const c = { ...r };
+    if (field !== 'roster') {
+      if (c.id === undefined || c.id === null || c.id === '') c.id = uid();
+    } else {
+      // Roster rows are matched by name; a nameless row is unreachable and would
+      // show up as a blank entry in the Drivers list.
+      c.name = String(c.name || '').trim();
+      if (!c.name) continue;
+      for (const k of ['license', 'warehouse', 'phone', 'hireDate', 'trainer', 'licenseExp', 'medCardExp']) {
+        if (c[k] !== undefined && c[k] !== null && typeof c[k] !== 'string') c[k] = String(c[k]);
+      }
+    }
+    out.push(c);
+  }
+  return out;
+}
+
 function importBackupText(text, mode) {
   let obj;
   try { obj = JSON.parse(text); } catch (e) { throw new Error('That file is not valid JSON.'); }
   const data = readBackup(obj);
   const report = [];
   for (const s of ALL_STORES) {
-    const incoming = data[s.field] || [];
+    const incoming = sanitizeImport(s.field, data[s.field]);
     if (mode === 'replace') {
       s.set(incoming.slice());
       report.push(s.label + ': ' + incoming.length);
