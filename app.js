@@ -204,7 +204,11 @@ async function initStorage() {
 /* ============================== Driver Roster (shared) ============================== */
 // Stored in usaf_roster_db / usaf_roster_v1 — the SAME IndexedDB all six AutoForce
 // apps read (they share an origin on GitHub Pages). One entry autofills every app.
-// Fields: { name, license, warehouse, phone, hireDate, trainer }.
+// Fields: { name, license, warehouse, phone, hireDate, trainer, licenseExp, medCardExp }.
+//
+// licenseExp / medCardExp are MIRRORED into the Cert Tracker (usaf_cert_tracker_db)
+// by syncRosterCerts() below, so a date typed here lands straight on the
+// expiring-certs reminder list.
 
 function rosterFind(name) {
   const n = String(name || '').trim().toLowerCase();
@@ -220,7 +224,7 @@ function rosterUpsert(entry) {
   if (!name) return;
   const existing = rosterFind(name);
   if (existing) {
-    for (const k of ['license', 'warehouse', 'phone', 'hireDate', 'trainer']) {
+    for (const k of ['license', 'warehouse', 'phone', 'hireDate', 'trainer', 'licenseExp', 'medCardExp']) {
       const v = String((entry && entry[k]) || '').trim();
       if (v) existing[k] = v;
     }
@@ -232,9 +236,62 @@ function rosterUpsert(entry) {
       phone: String((entry && entry.phone) || '').trim(),
       hireDate: String((entry && entry.hireDate) || '').trim(),
       trainer: String((entry && entry.trainer) || '').trim(),
+      licenseExp: String((entry && entry.licenseExp) || '').trim(),
+      medCardExp: String((entry && entry.medCardExp) || '').trim(),
     });
   }
   persist(ROSTER_DB, ROSTER_KEY, roster);
+}
+
+/* ---------- Roster -> Cert Tracker mirror ----------
+   The roster is the single place a driver is entered, so the two dates that
+   drive the renewal reminders (CDL + medical card) live here too. Every edit
+   calls syncRosterCerts(), which creates/updates/removes the matching cert in
+   the Cert Tracker so it shows up on the expiring list automatically.
+   Certs created this way are tagged src:'roster' — syncRosterCerts() only ever
+   touches those, so hand-added certs (hazmat, tanker, ...) are never clobbered,
+   and clearing a roster date removes only the mirrored cert. */
+
+const ROSTER_CERT_MAP = [
+  { field: 'licenseExp', label: 'CDL / Driver License' },
+  { field: 'medCardExp', label: 'DOT Medical Card' },
+];
+
+function certsDriverByName(name) {
+  const n = String(name || '').trim().toLowerCase();
+  if (!n) return null;
+  return drivers.find((d) => String(d.name || '').trim().toLowerCase() === n) || null;
+}
+
+function syncRosterCerts(r) {
+  if (!r || !String(r.name || '').trim()) return;
+  const wants = ROSTER_CERT_MAP.map((m) => String(r[m.field] || '').trim());
+  let d = certsDriverByName(r.name);
+  // Nothing tracked and no cert entry yet -> don't leave an empty driver behind.
+  if (!d) {
+    if (!wants.some(Boolean)) return;
+    d = newDriver();
+    d.name = String(r.name).trim();
+    drivers.push(d);
+  }
+  if (String(r.license || '').trim()) d.driverId = d.driverId || String(r.license).trim();
+  ROSTER_CERT_MAP.forEach((m, i) => {
+    const want = wants[i];
+    const mine = d.certs.filter((c) => c.src === 'roster' && c.label === m.label);
+    if (want) {
+      if (mine[0]) {
+        if (mine[0].expiry !== want) mine[0].expiry = want;
+        for (let j = 1; j < mine.length; j++) d.certs.splice(d.certs.indexOf(mine[j]), 1);
+      } else {
+        const c = newCert(m.label, want, '');
+        c.src = 'roster';
+        d.certs.push(c);
+      }
+    } else {
+      for (const c of mine) d.certs.splice(d.certs.indexOf(c), 1);
+    }
+  });
+  persist(CERTS_DB, CERTS_KEY, drivers);
 }
 
 function ensureRosterDatalist() {
@@ -559,9 +616,11 @@ function renderRosterView() {
 
   view.appendChild(el('div', { class: 'card' }, [
     el('h2', { class: 'card-title' }, ['Driver Roster']),
-    el('p', { class: 'sub', style: 'margin:0 0 8px' }, ['One profile per driver. Every AutoForce app autofills Name, Lic #, Warehouse, Hire Date and Trainer from here.']),
+    el('p', { class: 'sub', style: 'margin:0 0 8px' }, ['One profile per driver. Every AutoForce app autofills Name, Lic #, Warehouse, Hire Date and Trainer from here. The two expiry dates below are pushed straight into the Cert Tracker so they show up on the expiring list.']),
     el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Driver Name']), el('input', { id: 'rosName', list: 'roster-names', autocomplete: 'off' })]),
     el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['License #']), el('input', { id: 'rosLicense', placeholder: 'e.g. DRV-1024' })]),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Driver License Expiration']), el('input', { id: 'rosLicenseExp', type: 'date' })]),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Med Card Expiration']), el('input', { id: 'rosMedCardExp', type: 'date' })]),
     el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Warehouse / Location']), el('input', { id: 'rosWarehouse', placeholder: 'e.g. OKC North' })]),
     el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Driver Phone #']), el('input', { id: 'rosPhone', placeholder: 'e.g. (555) 123-4567', type: 'tel' })]),
     el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Hire Date']), el('input', { id: 'rosHire', type: 'date' })]),
@@ -581,13 +640,58 @@ function renderRosterView() {
 }
 
 function rosterCard(r) {
-  const editable = (prop, ph) => el('input', { type: prop === 'hireDate' ? 'date' : 'text', value: r[prop] || '', placeholder: ph, oninput: (e) => { r[prop] = e.target.value; persist(ROSTER_DB, ROSTER_KEY, roster); } });
+  const save = () => persist(ROSTER_DB, ROSTER_KEY, roster);
+  const editable = (prop, ph, type) => el('input', {
+    type: type || 'text', value: r[prop] || '', placeholder: ph || '',
+    oninput: (e) => { r[prop] = e.target.value; save(); },
+  });
+  // The two expiry dates also drive the Cert Tracker reminder list.
+  const expField = (prop, label) => {
+    const badge = el('span', { class: 'roster-cert-status' });
+    const paint = () => {
+      const iso = String(r[prop] || '').trim();
+      const txt = !iso ? 'Not tracked' : (() => {
+        const d = certsDriverByName(r.name);
+        const c = (d && d.certs.find((x) => x.src === 'roster' && x.expiry === iso)) || { expiry: iso };
+        const m = CERT_STATUS_META[certStatus(c)];
+        return m.label + ' · ' + daysText(c) + ' · in Cert Tracker';
+      })();
+      badge.className = 'roster-cert-status' + (iso ? ' ' + CERT_STATUS_META[certStatus({ expiry: iso })].cls : ' muted');
+      badge.innerHTML = '';
+      badge.appendChild(document.createTextNode(txt));
+    };
+    const input = el('input', {
+      type: 'date', value: r[prop] || '',
+      oninput: (e) => { r[prop] = e.target.value; save(); syncRosterCerts(r); paint(); },
+    });
+    paint();
+    return el('div', { class: 'field' }, [el('span', { class: 'field-label' }, [label]), input, badge]);
+  };
+
+  const nameInput = el('input', {
+    type: 'text', value: r.name || '', placeholder: 'Full name',
+    onchange: (e) => {
+      const nn = e.target.value.trim();
+      if (!nn) { e.target.value = r.name; return; }
+      const old = r.name;
+      r.name = nn;
+      if (old !== nn) {
+        const d = certsDriverByName(old);
+        if (d) d.name = nn;   // keep the cert tracker entry on the same driver
+      }
+      save();
+      syncRosterCerts(r);
+    },
+  });
+
   return el('div', { class: 'card' }, [
-    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Driver Name']), editable('name', 'Full name')]),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Driver Name']), nameInput]),
     el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['License #']), editable('license', 'e.g. DRV-1024')]),
+    expField('licenseExp', 'Driver License Expiration'),
+    expField('medCardExp', 'Med Card Expiration'),
     el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Warehouse / Location']), editable('warehouse', 'e.g. OKC North')]),
-    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Driver Phone #']), editable('phone', 'e.g. (555) 123-4567')]),
-    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Hire Date']), editable('hireDate', '')]),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Driver Phone #']), editable('phone', 'e.g. (555) 123-4567', 'tel')]),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Hire Date']), editable('hireDate', '', 'date')]),
     el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Trainer']), editable('trainer', 'e.g. J. Kowalski')]),
     el('div', { class: 'actions' }, [el('button', { class: 'btn ghost small danger', onclick: () => deleteRosterEntry(r.name) }, ['Delete'])]),
   ]);
@@ -597,17 +701,22 @@ function addRosterEntry() {
   const name = document.getElementById('rosName').value.trim();
   if (!name) { toast('Enter a driver name.'); return; }
   if (rosterFind(name)) { toast('That driver is already on the roster.'); return; }
-  roster.push({
+  const entry = {
     name,
     license: document.getElementById('rosLicense').value.trim(),
+    licenseExp: document.getElementById('rosLicenseExp').value,
+    medCardExp: document.getElementById('rosMedCardExp').value,
     warehouse: document.getElementById('rosWarehouse').value.trim(),
     phone: document.getElementById('rosPhone').value.trim(),
     hireDate: document.getElementById('rosHire').value,
     trainer: document.getElementById('rosTrainer').value.trim(),
-  });
+  };
+  roster.push(entry);
   persist(ROSTER_DB, ROSTER_KEY, roster);
+  syncRosterCerts(entry);
   renderRosterView();
-  toast('Added ' + name + ' to the roster.');
+  const tracked = [entry.licenseExp && 'license', entry.medCardExp && 'med card'].filter(Boolean);
+  toast('Added ' + name + ' to the roster.' + (tracked.length ? ' Sent to Cert Tracker: ' + tracked.join(' + ') + ' expiration.' : ''));
 }
 
 function deleteRosterEntry(name) {

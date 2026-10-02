@@ -8,6 +8,7 @@ One app for the whole driver lifecycle. Combines **Driver Review** (ride-along e
 - **Driver Review** – ride-along scoring by category, driver notes, signature capture, records list, quarterly filters, and a trends/scorecard view.
 - **New-Hire Training** – trainee roster, topic & milestone tracking (1-5 rating + comments), and a printable driver training record.
 - **Certifications** – per-driver certs with expiry tracking, 90/30-day warnings, and a dashboard alert list.
+- **Driver Roster** – one profile per driver (Lic #, warehouse, phone, hire date, trainer) that autofills every AutoForce app. Type a **Driver License Expiration** or **Med Card Expiration** there and it is pushed straight into the Cert Tracker, so those dates show up on the expiring-cert reminder list and the home dashboard alerts automatically. Editing or clearing a date there keeps the cert tracker in step; certs you add by hand (hazmat, tanker, …) are never touched.
 - **Home dashboard** – quick actions and "needs attention" alerts across all three modules.
 
 ## Install
@@ -33,4 +34,4 @@ See the Hub pre-loaded with sample data (5 drivers, reviews, training check-offs
 
 ## Tech
 
-Plain HTML/JS/CSS, no build step. Service worker caches assets for offline use. Data lives in the browser's IndexedDB (`usaf_driver_evals_db`, `usaf_training_db`, `usaf_cert_tracker_db`).
+Plain HTML/JS/CSS, no build step. Service worker caches assets for offline use. Data lives in the browser's IndexedDB (`usaf_driver_evals_db`, `usaf_training_db`, `usaf_cert_tracker_db`, `usaf_roster_db`).

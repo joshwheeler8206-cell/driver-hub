@@ -207,6 +207,23 @@ input[type='text'], input[type='date'], select, textarea {
 }
 .field input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
 
+/* Roster: live status of a mirrored expiry date (also on the Cert Tracker) */
+.roster-cert-status {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: #e2e8f0;
+  color: var(--muted);
+}
+.roster-cert-status.st-expired { background: #fee2e2; color: var(--red); }
+.roster-cert-status.st-critical { background: #ffedd5; color: var(--amber); }
+.roster-cert-status.st-warning { background: #fef9c3; color: #a16207; }
+.roster-cert-status.st-ok { background: #dcfce7; color: var(--green); }
+
 /* ---------- Buttons ---------- */
 .btn {
   border: 1px solid var(--line);
@@ -708,6 +725,9 @@ textarea.notes { resize: vertical; min-height: 44px; }
 :root[data-theme='dark'] select, :root[data-theme='dark'] textarea,
 :root[data-theme='dark'] .q-stat, :root[data-theme='dark'] .sc-stat { background: #0f172a; }
 :root[data-theme='dark'] .btn.primary-outline { background: #0f172a; color: var(--accent); border-color: var(--accent); }
+:root[data-theme='dark'] .roster-cert-status { background: #24314a; }
+:root[data-theme='dark'] .roster-cert-status.st-ok { background: #14532d; }
+:root[data-theme='dark'] .roster-cert-status.st-expired { background: #7f1d1d; }
 
 :root[data-theme='dark'] .track, :root[data-theme='dark'] .sc-cat-bar,
 :root[data-theme='dark'] .bar-track, :root[data-theme='dark'] .badge.st-unknown { background: #24314a; }
