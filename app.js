@@ -434,8 +434,10 @@ function updateNetBadge() {
 }
 
 // Same active-trainee definition used by the home "Needs Attention" inbox.
+// Guarded on the milestone object itself: a trainee restored from an older
+// backup may not have that key, and a bare `.date` here would kill the render.
 function getActiveTrainees() {
-  return trainees.filter((t) => !t.milestones || !t.milestones['Released / sign-off'].date);
+  return trainees.filter((t) => !((t.milestones || {})['Released / sign-off'] || {}).date);
 }
 
 function updateTrainBadge() {
@@ -545,11 +547,15 @@ function renderHome() {
     el('h2', { class: 'card-title' }, ['Data & Reports']),
     el('div', { class: 'actions' }, [
       el('button', { class: 'btn primary', onclick: () => exportAllData() }, ['📦 Backup All (JSON)']),
-      el('button', { class: 'btn', onclick: () => openDossier() }, ['👤 Driver Dossier']),
+      el('button', { class: 'btn', onclick: () => pickBackupFile() }, ['📥 Restore / Add from Backup']),
     ]),
+    el('p', { class: 'sub', style: 'margin:8px 0 0' }, ['Move everything to another device (PC → laptop, laptop → phone): tap Backup All here, then on the other device open the app and tap Restore / Add from Backup. Nothing leaves the device.']),
     el('div', { class: 'actions', style: 'margin-top:8px' }, [
+      el('button', { class: 'btn', onclick: () => openDossier() }, ['👤 Driver Dossier']),
       el('button', { class: 'btn small', onclick: () => exportEvalsCsv() }, ['Reviews CSV']),
       el('button', { class: 'btn small', onclick: () => exportCertsCsv() }, ['Certs CSV']),
+    ]),
+    el('div', { class: 'actions', style: 'margin-top:8px' }, [
       el('button', { class: 'btn small', onclick: () => exportTrainCsv() }, ['Training CSV']),
       el('button', { class: 'btn small', onclick: () => exportPaceCsv() }, ['PACE CSV']),
       el('button', { class: 'btn small', onclick: () => exportRoutesCsv() }, ['Routes CSV']),
@@ -799,13 +805,141 @@ function dashCard(icon, title, num, sub, onclick) {
 
 /* ============================== Data & Reports ============================== */
 
-function exportAllData() {
-  download('driver-hub-backup-' + todayISO() + '.json', JSON.stringify({
-    app: 'driver-hub',
+// Every local store the six AutoForce apps share. Used by the transfer
+// (export/import) feature so a whole device's data can be moved between
+// the PC, a laptop, a tablet and the phone in one file.
+const ALL_STORES = [
+  { field: 'evals',     label: 'Driver Reviews',      db: EVALS_DB,  key: EVALS_KEY,  get: () => evals,     set: (v) => { evals = v; } },
+  { field: 'trainees',  label: 'Training Records',    db: TRAIN_DB,  key: TRAIN_KEY,  get: () => trainees,  set: (v) => { trainees = v; } },
+  { field: 'drivers',   label: 'Certifications',      db: CERTS_DB,  key: CERTS_KEY,  get: () => drivers,   set: (v) => { drivers = v; } },
+  { field: 'paceEvals', label: 'PACE Evaluations',    db: PACE_DB,   key: PACE_KEY,   get: () => paceEvals, set: (v) => { paceEvals = v; } },
+  { field: 'routes',    label: 'Route Notes',         db: ROUTES_DB, key: ROUTES_KEY, get: () => routes,    set: (v) => { routes = v; } },
+  { field: 'roster',    label: 'Driver Roster',       db: ROSTER_DB, key: ROSTER_KEY, get: () => roster,    set: (v) => { roster = v; } },
+];
+
+// Records are matched on id where they have one; the roster is matched on name.
+function recordKey(field, rec) {
+  if (field === 'roster') return String((rec && rec.name) || '').trim().toLowerCase();
+  return (rec && rec.id) || '';
+}
+
+function backupPayload() {
+  const stores = {};
+  for (const s of ALL_STORES) stores[s.field] = s.get();
+  return {
+    app: 'autoforce',
+    source: 'driver-hub',
+    version: 2,
     exported: new Date().toISOString(),
-    version: 1,
-    evals, trainees, drivers, paceEvals, routes,
-  }, null, 2));
+    counts: Object.fromEntries(ALL_STORES.map((s) => [s.field, (stores[s.field] || []).length])),
+    stores,
+    // Flat duplicates kept so older v1 backups still import cleanly.
+    evals: stores.evals, trainees: stores.trainees, drivers: stores.drivers,
+    paceEvals: stores.paceEvals, routes: stores.routes, roster: stores.roster,
+  };
+}
+
+function exportAllData() {
+  download('autoforce-data-' + todayISO() + '.json', JSON.stringify(backupPayload(), null, 2));
+}
+
+
+/* ---------- Restore / transfer in ---------- */
+
+// Accepts v2 (stores{}) and v1 (flat fields) backup files.
+function readBackup(obj) {
+  if (!obj || typeof obj !== 'object') throw new Error('That file is not an AutoForce backup.');
+  const src = obj.stores && typeof obj.stores === 'object' ? obj.stores : obj;
+  const out = {};
+  let found = 0;
+  for (const s of ALL_STORES) {
+    const v = src[s.field];
+    if (Array.isArray(v)) { out[s.field] = v; found++; }
+  }
+  if (!found) throw new Error('No AutoForce data found in that file.');
+  return out;
+}
+
+// Merge = keep what's here, add only records we don't already have.
+// Replace = the file wins outright.
+function mergeStore(field, incoming, existing) {
+  if (!Array.isArray(incoming)) return { out: Array.isArray(existing) ? existing : [], added: 0 };
+  if (!Array.isArray(existing)) return { out: incoming.slice(), added: incoming.length };
+  const seen = new Set(existing.map((r) => recordKey(field, r)).filter(Boolean));
+  const out = existing.slice();
+  let added = 0;
+  for (const r of incoming) {
+    const k = recordKey(field, r);
+    if (k && seen.has(k)) continue;
+    if (k) seen.add(k);
+    out.push(r);
+    added++;
+  }
+  return { out, added };
+}
+
+function importBackupText(text, mode) {
+  let obj;
+  try { obj = JSON.parse(text); } catch (e) { throw new Error('That file is not valid JSON.'); }
+  const data = readBackup(obj);
+  const report = [];
+  for (const s of ALL_STORES) {
+    const incoming = data[s.field] || [];
+    if (mode === 'replace') {
+      s.set(incoming.slice());
+      report.push(s.label + ': ' + incoming.length);
+      persist(s.db, s.key, s.get());
+    } else {
+      const { out, added } = mergeStore(s.field, incoming, s.get());
+      s.set(out);
+      report.push(s.label + ': +' + added + ' (' + out.length + ' total)');
+      persist(s.db, s.key, s.get());
+    }
+  }
+  ensureRosterDatalist();
+  // Re-establish the roster -> cert tracker mirror for every driver, so a file
+  // that carried only a roster still produces the right expiring certs and the
+  // two stores can never drift apart after a transfer.
+  if (Array.isArray(roster)) for (const r of roster) syncRosterCerts(r);
+  return report;
+}
+
+function pickBackupFile() {
+  const input = el('input', { type: 'file', accept: 'application/json,.json', style: 'display:none' });
+  input.addEventListener('change', () => {
+    const f = input.files && input.files[0];
+    if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => confirmBackupImport(String(rd.result || ''));
+    rd.readAsText(f);
+  });
+  document.body.appendChild(input);
+  input.click();
+}
+
+function confirmBackupImport(text) {
+  let data;
+  try { data = readBackup(JSON.parse(text)); }
+  catch (e) { toast(e.message); return; }
+
+  const details = ALL_STORES.map((s) =>
+    s.label + ': ' + (data[s.field] || []).length + ' in file / ' + (s.get() || []).length + ' on this device'
+  ).join('\n');
+
+  if (!confirm('Backup contains —\n\n' + details +
+    '\n\nPress OK to ADD anything this device is missing (safe — keeps what is already here).' +
+    '\nPress Cancel to REPLACE everything on this device with the file.')) {
+    if (!confirm('REPLACE everything on this device with the backup?\n\nAnything currently on this device will be overwritten.')) return;
+    try {
+      toast('Restored: ' + importBackupText(text, 'replace').join('  ·  '));
+      switchTab('home');
+    } catch (e) { toast(e.message); }
+    return;
+  }
+  try {
+    toast('Merged in: ' + importBackupText(text, 'merge').join('  ·  '));
+    switchTab('home');
+  } catch (e) { toast(e.message); }
 }
 
 function exportEvalsCsv() {

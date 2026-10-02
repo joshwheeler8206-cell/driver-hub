@@ -247,8 +247,10 @@ input[type='text'], input[type='date'], select, textarea {
 .btn.big { padding: 13px; font-size: 16px; width: 100%; }
 .btn.danger { color: var(--red); }
 .btn.primary-outline { color: var(--accent); border-color: var(--accent); background: #eff6ff; }
-.actions { display: flex; gap: 10px; margin-top: 4px; }
-.actions .btn { flex: 1; }
+/* flex-wrap + min-width: a row of 2 buttons still fills the width, but a row of
+   3 wraps instead of squeezing every label into a narrow column. */
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+.actions .btn { flex: 1 1 auto; min-width: 132px; }
 .btn-row { display: flex; gap: 10px; margin-top: 12px; }
 .btn-row .btn { flex: 1; }
 
