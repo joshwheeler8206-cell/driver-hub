@@ -499,6 +499,9 @@ function renderHome() {
   }
 
   const grid = el('div', { class: 'dash-grid' }, [
+    dashCard('👤', 'Drivers', String(roster.length),
+      roster.length ? roster.length + ' profile(s) · autofills all apps' : 'No roster yet',
+      () => renderRosterView()),
     dashCard('🎓', 'New-Hire Training', String(inProgress),
       inProgress ? inProgress + ' trainee(s) · ' + released + ' released' : 'No trainees yet',
       () => switchTab('training')),
@@ -517,9 +520,6 @@ function renderHome() {
     dashCard('🗺️', 'Route Notes', String(routes.length),
       latestRoute ? 'Last: ' + latestRoute.name + ' · ' + (latestRoute.routeDate || 'no date') : 'No routes yet',
       () => switchTab('routes')),
-    dashCard('👤', 'Drivers', String(roster.length),
-      roster.length ? roster.length + ' profile(s) · autofills all apps' : 'No roster yet',
-      () => renderRosterView()),
     dashCard('🎉', 'Anniversaries', String(anniversariesUpcoming().length),
       anniversariesUpcoming().length ? anniversariesUpcoming().map((a) => a.name).join(', ') : 'None in next 60 days',
       () => renderRosterView()),
@@ -530,16 +530,14 @@ function renderHome() {
   view.appendChild(el('div', { class: 'card' }, [
     el('h2', { class: 'card-title' }, ['Quick Actions']),
     el('div', { class: 'actions' }, [
-      el('button', { class: 'btn primary', onclick: () => { switchTab('review'); startNewReview(); } }, ['+ New Review']),
+      el('button', { class: 'btn primary', onclick: () => renderRosterView() }, ['+ Driver Profile']),
+      el('button', { class: 'btn', onclick: () => { switchTab('review'); startNewReview(); } }, ['+ New Review']),
       el('button', { class: 'btn', onclick: () => { switchTab('pace'); startNewPace(); } }, ['+ PACE Drive']),
     ]),
     el('div', { class: 'actions', style: 'margin-top:8px' }, [
       el('button', { class: 'btn', onclick: () => { switchTab('training'); addTrainee(); } }, ['+ Add Trainee']),
       el('button', { class: 'btn', onclick: () => { switchTab('certs'); addDriver(); } }, ['+ Add Driver Cert']),
       el('button', { class: 'btn', onclick: () => { state.routes.sub = 'new'; switchTab('routes'); } }, ['+ New Route']),
-    ]),
-    el('div', { class: 'actions', style: 'margin-top:8px' }, [
-      el('button', { class: 'btn primary', onclick: () => renderRosterView() }, ['+ Driver Profile']),
     ]),
   ]));
 
