@@ -172,6 +172,7 @@ async function initStorage() {
     paceEvals = JSON.parse(localStorage.getItem(PACE_DB + ':' + PACE_KEY) || '[]') || [];
     routes = JSON.parse(localStorage.getItem(ROUTES_DB + ':' + ROUTES_KEY) || '[]') || [];
     roster = JSON.parse(localStorage.getItem(ROSTER_DB + ':' + ROSTER_KEY) || '[]') || [];
+    stampLoaded();
     return;
   }
   evals = (await idbGet(EVALS_DB, EVALS_KEY)) || [];
@@ -202,6 +203,24 @@ async function initStorage() {
     const legacyR = JSON.parse(localStorage.getItem(ROUTES_KEY));
     if (legacyR && legacyR.length && !routes.length) { routes = legacyR; await persist(ROUTES_DB, ROUTES_KEY, routes); }
   } catch (e) {}
+  stampLoaded();
+}
+
+// Give every record that predates the compliance audit system its audit ID +
+// migrated flag, persisting once if anything changed. Pre-audit records are
+// never given fake creation dates.
+function stampLoaded() {
+  try {
+    let changed = false;
+    changed = ensureAuditList(evals, 'REV') || changed;
+    changed = ensureAuditList(trainees, 'TRN') || changed;
+    changed = ensureAuditList(paceEvals, 'PACE') || changed;
+    if (changed) {
+      persist(EVALS_DB, EVALS_KEY, evals);
+      persist(TRAIN_DB, TRAIN_KEY, trainees);
+      persist(PACE_DB, PACE_KEY, paceEvals);
+    }
+  } catch (e) { console.error('audit stamping failed', e); }
 }
 
 /* ============================== Driver Roster (shared) ============================== */
@@ -1521,6 +1540,7 @@ function newEval() {
   }
   return {
     id: uid(),
+    auditId: auditId('REV'),
     createdAt: new Date().toISOString(),
     driverName: '',
     driverId: '',
@@ -1537,9 +1557,10 @@ function newEval() {
   };
 }
 
-function makeSigPad(label, initial) {
+function makeSigPad(label, initial, opts) {
+  opts = opts || {};
   const wrap = el('div', { class: 'sigpad-wrap' });
-  const canvas = el('canvas', { class: 'sigpad', width: 600, height: 200 });
+  const canvas = el('canvas', { class: 'sigpad' + (opts.locked ? ' locked' : ''), width: 600, height: 200 });
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1557,7 +1578,7 @@ function makeSigPad(label, initial) {
     const src = e.touches ? e.touches[0] : e;
     return { x: (src.clientX - r.left) * (canvas.width / r.width), y: (src.clientY - r.top) * (canvas.height / r.height) };
   };
-  const down = (e) => { e.preventDefault(); drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
+  const down = (e) => { if (opts.locked) return; e.preventDefault(); drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
   const move = (e) => { if (!drawing) return; e.preventDefault(); const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); };
   const up = () => (drawing = false);
   canvas.addEventListener('mousedown', down);
@@ -1569,7 +1590,10 @@ function makeSigPad(label, initial) {
   canvas.addEventListener('touchend', up);
   const bar = el('div', { class: 'sigpad-bar' });
   bar.appendChild(el('span', { class: 'sigpad-label' }, [label]));
-  bar.appendChild(el('button', { class: 'btn ghost small', onclick: () => { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); } }, ['Clear']));
+  if (opts.signedAt) bar.appendChild(el('span', { class: 'sig-lock' }, ['🔒 locked · signed ' + fmtDateTime(opts.signedAt)]));
+  else if (opts.locked) bar.appendChild(el('span', { class: 'sig-lock' }, ['🔒 signed (time not recorded)']));
+  if (opts.locked && opts.onVoid) bar.appendChild(el('button', { class: 'btn ghost small danger', onclick: opts.onVoid }, ['Void']));
+  if (!opts.locked) bar.appendChild(el('button', { class: 'btn ghost small', onclick: () => { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); } }, ['Clear']));
   wrap.appendChild(bar);
   wrap.appendChild(canvas);
   return { wrap, canvas, get: () => (ctx.getImageData(0, 0, canvas.width, canvas.height).data.some((v, i) => i % 4 === 3 && v > 0) ? canvas.toDataURL() : null) };
@@ -1703,8 +1727,14 @@ function saveEval() {
   const sigDate = document.getElementById('sigDate');
   if (sigDate) current.sigDate = sigDate.value;
 
-  if (!current.driverName.trim()) { toast('Driver Name is required.'); return; }
-  if (!current.evalDate) { toast('Review Date is required.'); return; }
+  if (!current.driverName.trim() || !current.evalDate) {
+    const missing = [];
+    if (!current.driverName.trim()) missing.push('driverName');
+    if (!current.evalDate) missing.push('evalDate');
+    flagMissing(missing);
+    toast('Not saved — required: ' + missing.map((id) => ({ driverName: 'Driver Name', evalDate: 'Review Date' })[id]).join(', ') + '.');
+    return;
+  }
 
   current.driverSig = current._sigDriver ? current._sigDriver.get() : null;
   current.assessorSig = current._sigAssessor ? current._sigAssessor.get() : null;
@@ -1712,6 +1742,7 @@ function saveEval() {
   delete current._sigDriver;
   delete current._sigAssessor;
 
+  stampRecord(current, 'REV');
   const idx = evals.findIndex((r) => r.id === current.id);
   if (idx >= 0) evals[idx] = JSON.parse(JSON.stringify(current));
   else evals.push(JSON.parse(JSON.stringify(current)));
@@ -2287,7 +2318,7 @@ function ensureCheckoffs(tr) {
 }
 
 function coCount(tr) {
-  const items = Object.values(tr.checkoffs || {}).filter((s) => s && s.date);
+  const items = Object.values(tr.checkoffs || {}).filter((s) => coDone(s));
   return items.length;
 }
 
@@ -2377,6 +2408,7 @@ function procItem(tr, key, label) {
 // older backup/restore or a hand-edited file, so a legacy trainee without them
 // can't crash the list/detail renders (progressOf/statusOf read these).
 function ensureTraits(tr) {
+  if (!tr.auditId) { tr.auditId = auditId('TRN'); tr.migrated = true; }  // pre-audit record: stamp, don't re-date
   if (!tr.topics || typeof tr.topics !== 'object') { tr.topics = {}; for (const t of TOPICS) tr.topics[t] = { date: '', trainer: '' }; }
   if (!tr.milestones || typeof tr.milestones !== 'object') { tr.milestones = {}; for (const m of MILESTONES) tr.milestones[m] = { date: '', notes: '' }; }
   return ensureProcess(ensureCheckoffs(tr));
@@ -2582,7 +2614,7 @@ function newTrainee(name, hireDate, trainer) {
   for (const t of TOPICS) topics[t] = { date: '', trainer: '' };
   const milestones = {};
   for (const m of MILESTONES) milestones[m] = { date: '', notes: '' };
-  const tr = { id: uid(), name, hireDate, trainer, topics, milestones, notes: '' };
+  const tr = { id: uid(), auditId: auditId('TRN'), name, hireDate, trainer, topics, milestones, notes: '' };
   return ensureTraits(tr);
 }
 
@@ -2770,7 +2802,7 @@ function coTable(tr, g) {
   ]));
   for (const item of g.items) {
     const s = coItem(tr, item);
-    const complete = !!(s.date && s.driver && s.trainer);
+    const complete = coDone(s);
     wrap.appendChild(el('div', { class: 'co-row' + (complete ? ' done' : '') }, [
       el('div', { class: 'co-item' }, [item]),
       el('div', { class: 'co-drv' }, [el('input', { type: 'text', class: 'co-input', maxlength: '3', placeholder: '·', value: s.driver, oninput: (e) => { const v = e.target.value.toUpperCase(); if (e.target.value !== v) e.target.value = v; s.driver = v; saveCo(tr); refreshCo(e.target); } })]),
@@ -2828,6 +2860,7 @@ function completeCoGroup(tr, g) {
       if (v === null) return;
       initials = v.trim().toUpperCase();
       if (!initials) return;
+      if (!coInitOk(initials)) { toast('Initials must be 2–3 letters.'); return; }
       if (!tr.coInitialsExtra) tr.coInitialsExtra = {};
       tr.coInitialsExtra[g.initialsLabel] = initials;
     }
@@ -2838,6 +2871,7 @@ function completeCoGroup(tr, g) {
       if (v === null) return;
       initials = v.trim().toUpperCase();
       if (!initials) return;
+      if (!coInitOk(initials)) { toast('Initials must be 2–3 letters.'); return; }
       tr.coInitials = initials;
     }
   }
@@ -2848,6 +2882,7 @@ function completeCoGroup(tr, g) {
     if (v === null) return;
     driverInit = v.trim().toUpperCase();
     if (!driverInit) return;
+    if (!coInitOk(driverInit)) { toast('Initials must be 2–3 letters.'); return; }
     tr.coDriverInitials = driverInit;
   }
   for (const it of pending) {
@@ -2856,6 +2891,7 @@ function completeCoGroup(tr, g) {
     s.trainer = initials;
     if (!s.driver) s.driver = driverInit;
   }
+  stampRecord(tr, 'TRN');
   persist(TRAIN_DB, TRAIN_KEY, trainees);
   renderTraineeDetail();
   toast(pending.length + ' item(s) signed off for ' + g.name + '.');
@@ -2973,20 +3009,105 @@ const SIGNOFF_ROLES = [
 function ensureSignoffs(tr) {
   if (!tr.signoffs || typeof tr.signoffs !== 'object') tr.signoffs = {};
   for (const r of SIGNOFF_ROLES) if (tr.signoffs[r.key] === undefined || tr.signoffs[r.key] === null) tr.signoffs[r.key] = '';
+  if (!tr.signoffs.signedAt || typeof tr.signoffs.signedAt !== 'object') tr.signoffs.signedAt = {};
+  if (!Array.isArray(tr.signoffs.voidLog)) tr.signoffs.voidLog = [];
   if (!tr.signoffs.date) tr.signoffs.date = '';
   return tr.signoffs;
 }
+
+/* ================================================================
+   Compliance audit helpers (Oct 2026)
+   Every official record (review / PACE eval / trainee) carries a unique
+   audit ID plus ISO-8601 created/updated timestamps. Records that existed
+   before this system are stamped on load and flagged `migrated` — never
+   given fake creation dates. Signatures lock with the time they were
+   drawn; changing one requires an explicit logged void.
+   ================================================================ */
+
+function auditId(prefix) {
+  const ymd = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  let rnd = '';
+  for (let i = 0; i < 4; i++) rnd += '0123456789ABCDEF'[Math.floor(Math.random() * 16)];
+  return 'AF-' + prefix + '-' + ymd + '-' + rnd;
+}
+
+function stampRecord(rec, prefix) {
+  if (!rec || typeof rec !== 'object') return rec;
+  const now = new Date().toISOString();
+  if (!rec.auditId) rec.auditId = auditId(prefix);
+  if (!rec.createdAt) { rec.createdAt = now; rec.migrated = true; }
+  rec.updatedAt = now;
+  return rec;
+}
+
+// Stamps every pre-existing record that predates the audit system. Returns
+// true when anything changed so the caller can persist once.
+function ensureAuditList(list, prefix) {
+  let changed = false;
+  (list || []).forEach(function (rec) {
+    if (rec && typeof rec === 'object' && !rec.auditId) {
+      stampRecord(rec, prefix);
+      rec.migrated = true;   // honest: we don't know its real creation date
+      changed = true;
+    }
+  });
+  return changed;
+}
+
+function fmtDateTime(iso) {
+  try {
+    return new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  } catch (e) { return iso || ''; }
+}
+
+// The audit line printed at the bottom of every exported PDF so paper can be
+// traced back to the record it came from.
+function auditFootnote(rec, kind) {
+  if (!rec || !rec.auditId) return '';
+  let s = 'Record ' + rec.auditId;
+  if (rec.createdAt) s += ' · created ' + fmtDateTime(rec.createdAt);
+  if (rec.updatedAt) s += ' · last updated ' + fmtDateTime(rec.updatedAt);
+  if (rec.migrated) s += ' · pre-audit record (migrated)';
+  if (kind) s += ' · ' + kind;
+  return s;
+}
+
+// Paints missing required fields red and focuses the first one, so the save
+// gate shows *what* is missing instead of a toast that gets dismissed blind.
+function flagMissing(ids) {
+  let first = null;
+  (ids || []).forEach(function (id) {
+    const n = document.getElementById(id);
+    if (!n) return;
+    n.classList.add('invalid');
+    n.addEventListener('input', function () { n.classList.remove('invalid'); }, { once: true });
+    n.addEventListener('change', function () { n.classList.remove('invalid'); }, { once: true });
+    if (!first) first = n;
+  });
+  if (first && first.focus) { try { first.focus(); } catch (e) {} }
+}
+
+/* Check-off rows only count as done with a real date AND real initials
+   (2–3 letters). Typing "." or a stray keystroke no longer turns a row
+   green or counts toward release. */
+function coInitOk(v) { return /^[A-Za-z]{2,3}$/.test(String(v || '').trim()); }
+function coDone(s) { return !!(s && s.date && coInitOk(s.driver) && coInitOk(s.trainer)); }
 
 function renderSignoffCard(tr) {
   ensureSignoffs(tr);
   const pads = {};
   const card = el('div', { class: 'card' }, [
     el('div', { class: 'section-head' }, [el('h2', { class: 'card-title' }, ['Digital Sign-Off'])]),
-    el('p', { class: 'rsub' }, ['Sign each line below (finger, mouse, or stylus) and tap Save Signatures. Your signatures are embedded into this driver\'s printed record.']),
+    el('p', { class: 'rsub' }, ['Sign each line below (finger, mouse, or stylus) and tap Save Signatures. Each signature locks with the exact time it was saved; changing one requires Void & re-sign, and the reason is kept in the audit log. Your signatures are embedded into this driver\'s printed record.']),
   ]);
   const grid = el('div', { class: 'sig-grid' });
   for (const r of SIGNOFF_ROLES) {
-    pads[r.key] = makeSigPad(r.label, tr.signoffs[r.key] || null);
+    const locked = !!tr.signoffs[r.key];
+    pads[r.key] = makeSigPad(r.label, tr.signoffs[r.key] || null, {
+      locked,
+      signedAt: locked ? (tr.signoffs.signedAt[r.key] || '') : '',
+      onVoid: locked ? () => voidSignature(tr, r.key) : null,
+    });
     grid.appendChild(pads[r.key].wrap);
   }
   card.appendChild(grid);
@@ -2996,7 +3117,7 @@ function renderSignoffCard(tr) {
   ]));
   card.appendChild(el('div', { class: 'btn-row' }, [
     el('button', { class: 'btn primary', onclick: () => saveSignoffs(tr, pads) }, ['Save Signatures']),
-    el('button', { class: 'btn ghost small danger', onclick: () => clearSignoffs(tr) }, ['Clear All']),
+    el('button', { class: 'btn ghost small danger', onclick: () => clearSignoffs(tr) }, ['Void All']),
   ]));
   return card;
 }
@@ -3005,23 +3126,47 @@ function saveSignoffs(tr, pads) {
   ensureSignoffs(tr);
   const dateInput = document.getElementById('signoffDate');
   if (dateInput) tr.signoffs.date = dateInput.value;
-  let any = false;
+  let saved = 0;
   for (const r of SIGNOFF_ROLES) {
-    tr.signoffs[r.key] = pads[r.key].get() || '';
-    if (tr.signoffs[r.key]) any = true;
+    if (tr.signoffs[r.key]) continue;              // already signed & locked — Void to change
+    const v = pads[r.key].get();
+    if (v) { tr.signoffs[r.key] = v; tr.signoffs.signedAt[r.key] = new Date().toISOString(); saved++; }
   }
+  stampRecord(tr, 'TRN');
   persist(TRAIN_DB, TRAIN_KEY, trainees);
-  toast(any ? 'Signatures saved.' : 'All signatures cleared.');
+  toast(saved ? saved + ' signature(s) saved and locked with the current time.' : 'Nothing new to save — signed lines are locked (Void to re-sign).');
   renderTraineeDetail();
 }
 
-function clearSignoffs(tr) {
-  if (!confirm('Clear ALL signatures for ' + tr.name + '?')) return;
+// Voiding a signature always requires a reason, which is kept in the record's
+// audit log — nothing is silently overwritten or backdated.
+function voidSignature(tr, key) {
   ensureSignoffs(tr);
-  for (const r of SIGNOFF_ROLES) tr.signoffs[r.key] = '';
+  const label = (SIGNOFF_ROLES.find((r) => r.key === key) || {}).label || key;
+  const reason = prompt('Void the ' + label + '? Enter a reason (kept in the audit log):', '');
+  if (reason === null) return;
+  if (!reason.trim()) { toast('A reason is required to void a signature.'); return; }
+  tr.signoffs.voidLog.push({ role: key, label: label, at: new Date().toISOString(), reason: reason.trim() });
+  tr.signoffs[key] = '';
+  delete tr.signoffs.signedAt[key];
   persist(TRAIN_DB, TRAIN_KEY, trainees);
   renderTraineeDetail();
-  toast('Signatures cleared.');
+  toast(label + ' voided — reason logged. Draw and save the replacement.');
+}
+
+function clearSignoffs(tr) {
+  const reason = prompt('Void ALL signatures for ' + tr.name + '? Enter a reason (kept in the audit log):', '');
+  if (reason === null) return;
+  if (!reason.trim()) { toast('A reason is required to void signatures.'); return; }
+  ensureSignoffs(tr);
+  for (const r of SIGNOFF_ROLES) {
+    if (tr.signoffs[r.key]) tr.signoffs.voidLog.push({ role: r.key, label: r.label, at: new Date().toISOString(), reason: reason.trim() });
+    tr.signoffs[r.key] = '';
+    delete tr.signoffs.signedAt[r.key];
+  }
+  persist(TRAIN_DB, TRAIN_KEY, trainees);
+  renderTraineeDetail();
+  toast('Signatures voided — reason logged.');
 }
 
 function renderTrainPrintInto(view) {
@@ -3172,16 +3317,21 @@ function processPrintBlock(tr) {
 function checkoffPrintBlock(tr) {
   ensureCheckoffs(tr);
   const done = coCount(tr);
+  const pend = CHECKOFF_TOTAL - done;
+  const banner = pend > 0
+    ? '<div class="pdf-pending">PENDING — ' + pend + ' of ' + CHECKOFF_TOTAL + ' check-off items still awaiting initials. This driver is NOT yet cleared to drive alone.</div>'
+    : '<div class="pdf-complete">Check-Off complete — all ' + CHECKOFF_TOTAL + ' items initialled.</div>';
   const groups = CHECKOFF_GROUPS.map((g) => {
-    const gdone = g.items.filter((it) => coItem(tr, it).date).length;
+    const gdone = g.items.filter((it) => coDone(coItem(tr, it))).length;
     return '<h4>' + esc(g.name) + ' (' + gdone + '/' + g.items.length + ')</h4>' +
       '<table><tr><th>Item</th><th>Trainee Initials</th><th>' + esc(coInitialsLabel(g)) + ' Initials</th><th>Date</th></tr>' +
       g.items.map((it) => {
         const s = coItem(tr, it);
-        return '<tr><td>' + esc(it) + '</td><td>' + esc((s.driver || '').toUpperCase()) + '</td><td>' + esc((s.trainer || '').toUpperCase()) + '</td><td>' + esc(s.date) + '</td></tr>';
+        return '<tr><td>' + esc(it) + '</td><td>' + esc(coInitOk(s.driver) ? s.driver.toUpperCase() : '') + '</td><td>' + esc(coInitOk(s.trainer) ? s.trainer.toUpperCase() : '') + '</td><td>' + esc(s.date) + '</td></tr>';
       }).join('') + '</table>';
   }).join('');
-  return '<h3>' + esc(tr.name) + ' — ' + done + '/' + CHECKOFF_TOTAL + ' signed</h3>' + groups;
+  const afAudit = auditFootnote(tr, 'New Hire Training Record');
+  return banner + '<h3>' + esc(tr.name) + ' — ' + done + '/' + CHECKOFF_TOTAL + ' signed</h3>' + groups + (afAudit ? '<div class="audit-line">' + esc(afAudit) + '</div>' : '');
 }
 
 function signoffFooterHtml(tr) {
@@ -3867,6 +4017,7 @@ function newPaceEval() {
   }
   return {
     id: uid(),
+    auditId: auditId('PACE'),
     createdAt: new Date().toISOString(),
     driver: '',
     exp: '',
@@ -4194,8 +4345,15 @@ function savePace() {
   current.reviewDate = formValue('reviewDate');
   current.trainingCompleteDate = formValue('trainingCompleteDate');
 
-  if (!current.date) { toast('Date is required.'); return; }
-  if (!current.evaluator.trim()) { toast('Evaluator name is required.'); return; }
+  if (!current.date || !current.evaluator.trim() || !(current.driver || '').trim()) {
+    const missing = [];
+    if (!(current.driver || '').trim()) missing.push('driver');
+    if (!current.date) missing.push('paceDate');
+    if (!current.evaluator.trim()) missing.push('evaluator');
+    flagMissing(missing);
+    toast('Not saved — required: ' + missing.map((id) => ({ driver: 'Driver', paceDate: 'Date', evaluator: 'Evaluator' })[id]).join(', ') + '.');
+    return;
+  }
 
   stopPaceTimers();
   current.evaluatorSig = current._sigEvaluator ? current._sigEvaluator.get() : null;
@@ -4205,6 +4363,7 @@ function savePace() {
 
   const lowCount = countPaceLow(current);
 
+  stampRecord(current, 'PACE');
   const idx = paceEvals.findIndex((r) => r.id === current.id);
   if (idx >= 0) paceEvals[idx] = JSON.parse(JSON.stringify(current));
   else paceEvals.push(JSON.parse(JSON.stringify(current)));
@@ -4594,7 +4753,9 @@ function afPaceSpec(r) {
   const footnotes = [];
   footnotes.push('Items rated Not Practiced: ' + countPaceLow(r) + ' of ' + paceTotalItems());
   if (r.trainingCompleteDate) footnotes.push('PACE Behavioral Driving Evaluation Training Complete Date: ' + fmtDate(r.trainingCompleteDate));
-  footnotes.push('Generated ' + todayISO() + ' · U.S. AutoForce · Field Operations');
+  const afAudit = auditFootnote(r, 'PACE Evaluation');
+  if (afAudit) footnotes.push(afAudit);
+  footnotes.push('Generated ' + fmtDateTime(new Date().toISOString()) + ' · U.S. AutoForce · Field Operations');
   return {
     kind: 'PACE',
     name: r.driver || r.evaluator || 'Driver',
@@ -4707,7 +4868,11 @@ function afTrainSpec(tr) {
     footnotes.push('Region ' + region + ' contacts: ' + REGION_CONTACTS[region].join(', '));
   }
   footnotes.push('The driver file must be complete and signed off before the driver goes on the road alone.');
-  footnotes.push('Generated ' + todayISO() + ' · U.S. AutoForce · Field Operations');
+  const coPending = CHECKOFF_TOTAL - coCount(tr);
+  if (coPending > 0) footnotes.unshift('PENDING — ' + coPending + ' of ' + CHECKOFF_TOTAL + ' check-off items still awaiting initials. This driver is NOT yet cleared to drive alone.');
+  const afAudit = auditFootnote(tr, 'New Hire Training Record');
+  if (afAudit) footnotes.push(afAudit);
+  footnotes.push('Generated ' + fmtDateTime(new Date().toISOString()) + ' · U.S. AutoForce · Field Operations');
   return {
     kind: 'New Hire',
     name: tr.name || 'Trainee',
