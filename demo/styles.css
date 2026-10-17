@@ -32,6 +32,10 @@ html, body {
 
 /* ---------- Header ---------- */
 .app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   background:
     radial-gradient(120% 170% at 88% -30%, rgba(59,130,246,.45) 0%, rgba(59,130,246,0) 55%),
     linear-gradient(135deg, #0b1120 0%, #16213a 60%, #1e293b 100%);
@@ -40,10 +44,68 @@ html, body {
   padding-top: calc(15px + env(safe-area-inset-top));
   border-bottom: 2px solid var(--accent, #2563eb);
 }
-.brand { display: flex; align-items: center; gap: 13px; }
-.brand-logo { width: 92px; height: 60px; border-radius: 8px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
-.brand h1 { font-size: 19px; margin: 0; letter-spacing: .3px; }
-.brand p { margin: 2px 0 0; font-size: 12px; color: #94a3b8; }
+.brand { display: flex; align-items: center; gap: 13px; min-width: 0; flex: 1; }
+.brand-text { min-width: 0; }
+.brand-logo { width: 92px; height: 60px; border-radius: 8px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.35); flex-shrink: 0; }
+.brand h1 { font-size: 19px; margin: 0; letter-spacing: .3px; white-space: nowrap; }
+.brand p { margin: 2px 0 0; font-size: 12px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+/* Network status badge */
+.net-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .3px;
+  color: #e2e8f0;
+  background: rgba(255,255,255,.09);
+  border: 1px solid rgba(255,255,255,.16);
+  white-space: nowrap;
+}
+.net-badge::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 0 3px rgba(74,222,128,.25);
+}
+.net-badge.net-off { color: #fca5a5; }
+.net-badge.net-off::before {
+  background: #f87171;
+  box-shadow: 0 0 0 3px rgba(248,113,113,.25);
+  animation: net-pulse 1.4s ease-in-out infinite;
+}
+@keyframes net-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .45; }
+}
+
+/* Dark-mode toggle */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.09);
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.theme-toggle:active { background: rgba(255,255,255,.18); }
+.theme-toggle svg { width: 18px; height: 18px; }
+.theme-toggle .icon-sun { display: none; }
+:root[data-theme='dark'] .theme-toggle .icon-moon { display: none; }
+:root[data-theme='dark'] .theme-toggle .icon-sun { display: block; }
 
 /* ---------- Main / view ---------- */
 .view {
@@ -65,6 +127,7 @@ html, body {
   z-index: 50;
 }
 .tab {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -82,6 +145,24 @@ html, body {
 }
 .tab svg { width: 21px; height: 21px; }
 .tab.active { color: var(--accent); box-shadow: inset 0 -2.5px 0 var(--accent); }
+
+.tab-badge {
+  position: absolute;
+  top: 3px;
+  left: calc(50% + 8px);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+  z-index: 2;
+}
+.tab-badge[hidden] { display: none; }
 
 .app-footer { text-align: center; font-size: 11px; color: #64748b; margin: 22px 0 2px; letter-spacing: .4px; }
 .app-footer .fl { font-weight: 700; color: #334155; }
@@ -126,6 +207,42 @@ input[type='text'], input[type='date'], select, textarea {
 }
 .field input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
 
+/* Roster: live status of a mirrored expiry date (also on the Cert Tracker) */
+.roster-cert-status {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: #e2e8f0;
+  color: var(--muted);
+}
+.roster-cert-status.st-expired { background: #fee2e2; color: var(--red); }
+.roster-cert-status.st-critical { background: #ffedd5; color: var(--amber); }
+.roster-cert-status.st-warning { background: #fef9c3; color: #a16207; }
+.roster-cert-status.st-ok { background: #dcfce7; color: var(--green); }
+
+/* Roster name picker: a plain dropdown of known drivers, always usable even
+   where the native datalist popup never opens. */
+.roster-pick { margin-top: 6px; }
+
+/* Read-only summary of what the shared roster knows about the chosen driver —
+   hire date, licence #, licence / med-card expirations, warehouse, trainer. */
+.roster-info {
+  margin-top: 7px; padding: 7px 9px; border: 1px dashed var(--line); border-radius: 8px;
+  background: rgba(37, 99, 235, .05); font-size: 11.5px; color: var(--muted);
+  line-height: 1.5; overflow-wrap: anywhere;
+}
+.roster-info b { color: var(--ink); }
+
+/* Month / Day / Year dropdowns — work on every device, unlike the native
+   calendar's year control on some phones and installed web apps. */
+.dt-row { display: flex; gap: 6px; }
+.dt-row select { flex: 1 1 0; min-width: 0; width: auto; padding-left: 8px; padding-right: 8px; }
+.dt-row .dt-y { flex: 1.2 1 0; }
+
 /* ---------- Buttons ---------- */
 .btn {
   border: 1px solid var(--line);
@@ -149,8 +266,10 @@ input[type='text'], input[type='date'], select, textarea {
 .btn.big { padding: 13px; font-size: 16px; width: 100%; }
 .btn.danger { color: var(--red); }
 .btn.primary-outline { color: var(--accent); border-color: var(--accent); background: #eff6ff; }
-.actions { display: flex; gap: 10px; margin-top: 4px; }
-.actions .btn { flex: 1; }
+/* flex-wrap + min-width: a row of 2 buttons still fills the width, but a row of
+   3 wraps instead of squeezing every label into a narrow column. */
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+.actions .btn { flex: 1 1 auto; min-width: 132px; }
 .btn-row { display: flex; gap: 10px; margin-top: 12px; }
 .btn-row .btn { flex: 1; }
 
@@ -212,6 +331,22 @@ textarea.notes { resize: vertical; min-height: 44px; }
   background: #fff;
   touch-action: none;
 }
+.sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 560px) { .sig-grid { grid-template-columns: 1fr; } }
+.sig-grid .sigpad { height: 120px; }
+.tp-ck { width: 22px; height: 22px; flex: none; margin-right: 2px; accent-color: var(--accent); }
+
+/* ---------- Auto-backup toggle ---------- */
+.ab-toggle {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin-top: 12px; padding: 10px 12px;
+  border: 1.5px solid var(--line); border-radius: 10px;
+  background: var(--soft, rgba(37,99,235,.06));
+  cursor: pointer;
+}
+.ab-ck { width: 22px; height: 22px; flex: none; margin-top: 1px; accent-color: var(--accent); }
+.ab-txt { display: flex; flex-direction: column; gap: 2px; }
+.ab-title { font-size: 13px; font-weight: 700; }
 
 /* ---------- Records ---------- */
 .rec-list { display: flex; flex-direction: column; gap: 10px; }
@@ -340,7 +475,7 @@ textarea.notes { resize: vertical; min-height: 44px; }
 }
 .subtab.active { background: var(--accent); color: #fff; }
 
-/* ---------- Quarterly ---------- */
+/* ---------- Review summary ---------- */
 .qsel { margin-bottom: 12px; }
 .qsel-select { font-size: 15px; }
 .q-summary { display: flex; gap: 10px; margin-bottom: 12px; }
@@ -407,6 +542,16 @@ textarea.notes { resize: vertical; min-height: 44px; }
 .check.done { background: var(--accent); border-color: var(--accent); color: #fff; }
 .topic-name, .mile-name { font-size: 14px; font-weight: 600; }
 .topic-meta, .mile-meta { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.mile-body { flex: 1; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.mile-note-btn {
+  flex-shrink: 0; width: 34px; height: 34px; padding: 0;
+  border: 1px solid var(--line); border-radius: 9px;
+  background: none; color: var(--muted);
+  font-size: 15px; line-height: 1; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mile-note-btn.has { border-color: var(--accent); color: var(--accent); }
+.mile-note-btn:active { background: rgba(0, 0, 0, .05); }
 
 /* ---------- Driver/Trainer Check-Off ---------- */
 .co-group { border: 1px solid var(--line); border-radius: 12px; margin-bottom: 10px; overflow: hidden; background: var(--card); }
@@ -424,9 +569,12 @@ textarea.notes { resize: vertical; min-height: 44px; }
 .co-row { display: flex; align-items: center; gap: 6px; padding: 7px 14px; border-top: 1px solid var(--line); }
 .co-row:first-child { border-top: none; }
 .co-row.co-th { padding: 8px 14px; background: #f8fafc; font-size: 10.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
-.co-item { flex: 1; min-width: 0; font-size: 13px; }
-.co-drv, .co-tr { width: 52px; flex-shrink: 0; }
+.co-item { flex: 1; min-width: 0; font-size: 13px; overflow-wrap: break-word; }
+.co-drv, .co-tr { width: 70px; flex-shrink: 0; }
 .co-date { width: 118px; flex-shrink: 0; }
+/* The header cells name the initials ("Trainee Initials" / "Trainer Initials").
+   Phones get the short wording instead — see the 480px block below. */
+.co-lbl-short { display: none; }
 .co-input {
   width: 100%; min-height: 30px;
   border: 1px solid var(--line); border-radius: 6px;
@@ -597,70 +745,121 @@ textarea.notes { resize: vertical; min-height: 44px; }
 .bar-fill { height: 100%; border-radius: 6px; background: var(--accent); }
 .bar-val { width: 34px; text-align: right; font-size: 13px; font-weight: 700; flex: 0 0 auto; }
 
-/* ---------- Dark mode ---------- */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0b1120;
-    --card: #121b2f;
-    --ink: #e2e8f0;
-    --muted: #94a3b8;
-    --line: #24314a;
-    --red: #f87171;
-    --amber: #fbbf24;
-    --green: #34d399;
-    --green-soft: #052e16;
-    --green-dark: #4ade80;
-    --red-soft: #450a0a;
-    --purple: #c4b5fd;
-    --accent-dark: #1d4ed8;
-    --shadow: 0 1px 3px rgba(0, 0, 0, .45);
-  }
-  body { background: var(--bg); }
-
-  .tabbar, .subtabs, .btn, .progress, .sig-pad, .rate, .pace-toggle, .timer-btn,
-  .field input, .field select, .field textarea,
-  input[type='text'], input[type='date'], select, textarea,
-  .q-stat, .sc-stat { background: #0f172a; }
-  .btn.primary-outline { background: #0f172a; color: var(--accent); border-color: var(--accent); }
-
-  .track, .sc-cat-bar, .bar-track, .badge.st-unknown { background: #24314a; }
-
-  .rate.SAT.on, .rate.r3.on, .pace-toggle.on { background: #14532d; }
-  .rate.NI.on { background: #7f1d1d; }
-  .badge.bad-ok, .badge.released, .badge.st-ok { background: #14532d; }
-  .badge.bad-ni, .badge.st-expired { background: #7f1d1d; }
-  .badge.in-training { background: #4c1d95; }
-  .badge.ready { background: #78350f; }
-  .badge.st-critical { background: #7c2d12; }
-  .badge.st-warning { background: #713f12; }
-
-  .rn-new-card { background: #052e16; border-color: #166534; }
-  .rn-new-card .card-title { color: #4ade80; border-color: #166534; }
-  .rn-progress { background: #24314a; }
-  .rn-instr { background: #0f172a; }
-
-  .co-count { background: #4c1d95; color: #c4b5fd; }
-  .co-row.co-th { background: #0f172a; }
-  .co-row.done .co-input { border-color: #14532d; background: #052e16; }
-
-  .app-header {
-    background:
-      radial-gradient(120% 170% at 88% -30%, rgba(59,130,246,.45) 0%, rgba(59,130,246,0) 55%),
-      linear-gradient(135deg, #0b1120 0%, #16213a 60%, #1e293b 100%);
-  }
-  .brand p { color: #64748b; }
-  .app-footer { color: #475569; }
-  .app-footer .fl { color: #94a3b8; }
-  .rsec h3 { color: #2dd4bf; }
-
-  svg line { stroke: #24314a !important; }
-  svg text { fill: #94a3b8 !important; }
-  svg circle { fill: var(--accent) !important; }
-  svg polyline { stroke: var(--accent) !important; }
+/* ---------- Dark mode ----------
+   Driven by html[data-theme='dark'], set by the header toggle (app.js).
+   Defaults to the OS preference when the user hasn't chosen one. */
+:root[data-theme='dark'] {
+  --bg: #0b1120;
+  --card: #121b2f;
+  --ink: #e2e8f0;
+  --muted: #94a3b8;
+  --line: #24314a;
+  --red: #f87171;
+  --amber: #fbbf24;
+  --green: #34d399;
+  --green-soft: #052e16;
+  --green-dark: #4ade80;
+  --red-soft: #450a0a;
+  --purple: #c4b5fd;
+  --accent-dark: #1d4ed8;
+  --shadow: 0 1px 3px rgba(0, 0, 0, .45);
 }
+
+:root[data-theme='dark'] .tabbar, :root[data-theme='dark'] .subtabs,
+:root[data-theme='dark'] .btn, :root[data-theme='dark'] .progress,
+:root[data-theme='dark'] .sig-pad, :root[data-theme='dark'] .rate,
+:root[data-theme='dark'] .pace-toggle, :root[data-theme='dark'] .timer-btn,
+:root[data-theme='dark'] .field input, :root[data-theme='dark'] .field select,
+:root[data-theme='dark'] .field textarea,
+:root[data-theme='dark'] input[type='text'], :root[data-theme='dark'] input[type='date'],
+:root[data-theme='dark'] select, :root[data-theme='dark'] textarea,
+:root[data-theme='dark'] .q-stat, :root[data-theme='dark'] .sc-stat { background: #0f172a; }
+:root[data-theme='dark'] .btn.primary-outline { background: #0f172a; color: var(--accent); border-color: var(--accent); }
+:root[data-theme='dark'] .roster-cert-status { background: #24314a; }
+:root[data-theme='dark'] .roster-cert-status.st-ok { background: #14532d; }
+:root[data-theme='dark'] .roster-cert-status.st-expired { background: #7f1d1d; }
+
+:root[data-theme='dark'] .track, :root[data-theme='dark'] .sc-cat-bar,
+:root[data-theme='dark'] .bar-track, :root[data-theme='dark'] .badge.st-unknown { background: #24314a; }
+
+:root[data-theme='dark'] .rate.SAT.on, :root[data-theme='dark'] .rate.r3.on,
+:root[data-theme='dark'] .pace-toggle.on { background: #14532d; }
+:root[data-theme='dark'] .rate.NI.on { background: #7f1d1d; }
+:root[data-theme='dark'] .badge.bad-ok, :root[data-theme='dark'] .badge.released,
+:root[data-theme='dark'] .badge.st-ok { background: #14532d; }
+:root[data-theme='dark'] .badge.bad-ni, :root[data-theme='dark'] .badge.st-expired { background: #7f1d1d; }
+:root[data-theme='dark'] .badge.in-training { background: #4c1d95; }
+:root[data-theme='dark'] .badge.ready { background: #78350f; }
+:root[data-theme='dark'] .badge.st-critical { background: #7c2d12; }
+:root[data-theme='dark'] .badge.st-warning { background: #713f12; }
+
+:root[data-theme='dark'] .rn-new-card { background: #052e16; border-color: #166534; }
+:root[data-theme='dark'] .rn-new-card .card-title { color: #4ade80; border-color: #166534; }
+:root[data-theme='dark'] .rn-progress { background: #24314a; }
+:root[data-theme='dark'] .rn-instr { background: #0f172a; }
+
+:root[data-theme='dark'] .co-count { background: #4c1d95; color: #c4b5fd; }
+:root[data-theme='dark'] .co-row.co-th { background: #0f172a; }
+:root[data-theme='dark'] .co-row.done .co-input { border-color: #14532d; background: #052e16; }
+
+:root[data-theme='dark'] .brand p { color: #64748b; }
+:root[data-theme='dark'] .app-footer { color: #475569; }
+:root[data-theme='dark'] .app-footer .fl { color: #94a3b8; }
+:root[data-theme='dark'] .rsec h3 { color: #2dd4bf; }
+
+:root[data-theme='dark'] svg line { stroke: #24314a !important; }
+:root[data-theme='dark'] svg text { fill: #94a3b8 !important; }
+:root[data-theme='dark'] svg circle { fill: var(--accent) !important; }
+:root[data-theme='dark'] svg polyline { stroke: var(--accent) !important; }
 
 /* ---------- Print ---------- */
 @media print {
   .tabbar, .app-header, .toast, .actions, .btn, .backbar, .sc-sel { display: none !important; }
   .view { padding: 0; max-width: none; }
 }
+
+/* ---------- Check-off: stack on phones so item text never gets squeezed ---------- */
+@media (max-width: 480px) {
+  .co-row { flex-wrap: wrap; padding: 8px 12px; }
+  .co-row .co-item { flex: 1 1 100%; overflow-wrap: break-word; }
+  /* The header row used to be dropped here, which left the initials columns
+     unlabelled on phones. Keep it (minus the "Item" cell) and switch to the
+     short wording so "Trainee Initials" doesn't wrap to three lines. */
+  .co-row.co-th .co-item { display: none; }
+  .co-row.co-th .co-drv, .co-row.co-th .co-tr { white-space: normal; line-height: 1.15; }
+  .co-lbl-full { display: none; }
+  .co-lbl-short { display: inline; }
+  .co-drv, .co-tr, .co-date { flex: 1 1 0; width: auto; }
+}
+
+/* Compliance-review group signs off with "DOT Compliance Support" initials, so
+   that column needs a little more room than the plain "Trainer" one. Phones keep
+   the stacked/equal-flex layout above, so this only applies on wider screens. */
+@media (min-width: 481px) {
+  .co-table-wide .co-tr { width: 104px; }
+  .co-row.co-th .co-drv, .co-row.co-th .co-tr { white-space: normal; line-height: 1.15; }
+}
+
+/* ---------- Driver Training Process (gated) ---------- */
+.pr-card .section-head { gap: 10px; }
+.pr-card .select {
+  flex-shrink: 0; width: auto; max-width: 42%;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--card); color: var(--ink); padding: 6px 8px; font-size: 12.5px; font-weight: 600;
+}
+.pr-banner { border-radius: 10px; padding: 10px 12px; font-size: 13px; font-weight: 700; margin: 4px 0 10px; line-height: 1.4; }
+.pr-banner.no { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+.pr-banner.warm { background: #fef3c7; color: var(--amber); border: 1px solid #fde68a; }
+.pr-banner.ok { background: #dcfce7; color: var(--green); border: 1px solid #bbf7d0; }
+.pr-phase { border: 1px solid var(--line); border-radius: 12px; margin-bottom: 10px; overflow: hidden; background: var(--card); }
+.pr-head { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-bottom: 1px solid var(--line); background: #f8fafc; }
+.pr-title { flex: 1; font-size: 13.5px; font-weight: 700; }
+.pr-title.done { color: var(--green); }
+.pr-n { font-size: 11px; font-weight: 700; color: var(--purple); background: #ede9fe; padding: 2px 8px; border-radius: 999px; flex-shrink: 0; }
+.pr-rule { font-size: 11.5px; color: var(--muted); padding: 8px 14px 0; line-height: 1.35; }
+.pr-body.locked { opacity: .55; }
+.pr-item { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-top: 1px solid var(--line); }
+.pr-item:first-child { border-top: none; }
+.pr-item .check { width: 24px; height: 24px; font-size: 13px; border-radius: 7px; }
+.pr-item.done .topic-name { color: var(--green); }
+.pr-contacts { margin-top: 4px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: #f8fafc; }
