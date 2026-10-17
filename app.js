@@ -1277,7 +1277,6 @@ function reportHtml(r) {
     '@media print { .noprint { display: none; } }' +
     '</style></head><body>' +
     '<div style="margin-bottom:12px;border-bottom:2px solid #1d4ed8;padding-bottom:8px"><img src="' + AF_LOGO + '" style="height:44px;width:auto;border-radius:6px" alt="U.S. AutoForce"></div>' +
-    '<div style="margin-bottom:12px;border-bottom:2px solid #1d4ed8;padding-bottom:8px"><img src="' + AF_LOGO + '" style="height:44px;width:auto;border-radius:6px" alt="U.S. AutoForce"></div>' +
     '<div class="head"><h1>' + title + '</h1><p>U.S. AutoForce &bull; Confidential &bull; SAT = Satisfactory | NI = Needs Improvement</p></div>' +
     '<table class="meta"><tr>' +
     '<td class="lbl">DRIVER NAME</td><td>' + esc(r.driverName) + '</td>' +
@@ -1408,7 +1407,6 @@ function printQuarter(key) {
     'td.it { width: 70%; }' +
     '.foot { margin-top: 16px; font-size: 9.5px; color: #555; border-top: 1px solid #aaa; padding-top: 5px; }' +
     '</style></head><body>' +
-    '<div style="margin-bottom:12px;border-bottom:2px solid #1d4ed8;padding-bottom:8px"><img src="' + AF_LOGO + '" style="height:44px;width:auto;border-radius:6px" alt="U.S. AutoForce"></div>' +
     '<div style="margin-bottom:12px;border-bottom:2px solid #1d4ed8;padding-bottom:8px"><img src="' + AF_LOGO + '" style="height:44px;width:auto;border-radius:6px" alt="U.S. AutoForce"></div>' +
     '<div class="head"><h1>Quarterly Driver Review Summary</h1><p>' + esc(key) + ' &bull; U.S. AutoForce &bull; Confidential</p></div>' +
     rows.join('') +
@@ -2382,7 +2380,6 @@ function certPrintHtml() {
     '.foot { margin-top: 16px; font-size: 9.5px; color: #555; border-top: 1px solid #aaa; padding-top: 5px; }' +
     '.sig { margin-top: 36px; display: flex; gap: 40px; } .sig div { flex: 1; border-top: 1px solid #333; padding-top: 3px; font-size: 10px; color: #444; }' +
     '</style></head><body>' +
-    '<div style="margin-bottom:12px;border-bottom:2px solid #d97706;padding-bottom:8px"><img src="' + AF_LOGO + '" style="height:44px;width:auto;border-radius:6px" alt="U.S. AutoForce"></div>' +
     '<div style="margin-bottom:12px;border-bottom:2px solid #d97706;padding-bottom:8px"><img src="' + AF_LOGO + '" style="height:44px;width:auto;border-radius:6px" alt="U.S. AutoForce"></div>' +
     '<div class="head"><h1>Driver Certification &amp; Expiry Report</h1><p>Generated: <strong>' + esc(todayISO()) + '</strong> &bull; U.S. AutoForce &bull; Confidential</p></div>' +
     driverRows.join('') +
