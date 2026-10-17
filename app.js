@@ -3323,6 +3323,16 @@ function checkoffPrintBlock(tr) {
     : '<div class="pdf-complete">Check-Off complete — all ' + CHECKOFF_TOTAL + ' items initialled.</div>';
   const groups = CHECKOFF_GROUPS.map((g) => {
     const gdone = g.items.filter((it) => coDone(coItem(tr, it))).length;
+    // The DOT Compliance review prints only the compliance initials + date —
+    // no trainee/trainer column (the initials belong to compliance alone).
+    if (g.initialsLabel) {
+      return '<h4>' + esc(g.name) + ' (' + gdone + '/' + g.items.length + ')</h4>' +
+        '<table><tr><th>Item</th><th>' + esc(coInitialsLabel(g)) + ' Initials</th><th>Date</th></tr>' +
+        g.items.map((it) => {
+          const s = coItem(tr, it);
+          return '<tr><td>' + esc(it) + '</td><td>' + esc(coInitOk(s.trainer) ? s.trainer.toUpperCase() : '') + '</td><td>' + esc(s.date) + '</td></tr>';
+        }).join('') + '</table>';
+    }
     return '<h4>' + esc(g.name) + ' (' + gdone + '/' + g.items.length + ')</h4>' +
       '<table><tr><th>Item</th><th>Trainee Initials</th><th>' + esc(coInitialsLabel(g)) + ' Initials</th><th>Date</th></tr>' +
       g.items.map((it) => {
@@ -4851,6 +4861,14 @@ function afTrainSpec(tr) {
       heading: 'Check-Off · ' + g.name + (g.initialsLabel ? ' — ' + g.initialsLabel + ' initials' : ''),
       rows: g.items.map((it) => {
         const c = coItem(tr, it);
+        // The DOT Compliance review carries only the compliance initials —
+        // no trainee/trainer entries on those rows.
+        if (g.initialsLabel) {
+          const bits = [];
+          if (c.date) bits.push(c.date);
+          if (c.trainer) bits.push(c.trainer.toUpperCase());
+          return [it, bits.join(' · ') || '—'];
+        }
         const bits = [];
         if (c.date) bits.push(c.date);
         if (c.driver) bits.push('trainee ' + c.driver);
