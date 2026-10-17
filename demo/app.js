@@ -3271,10 +3271,8 @@ function trainPrintHtml(list) {
     '.sig .sigdate { font-size: 12px; font-weight: 600; height: 44px; display: flex; align-items: flex-end; }' +
     '.print-brand { display: flex; align-items: center; gap: 12px; padding-bottom: 10px; margin-bottom: 14px; border-bottom: 2px solid #2563eb; }' +
     '.print-brand img { height: 44px; width: auto; border-radius: 6px; }' +
-    '.pb-eyebrow { font-size: 10px; font-weight: bold; letter-spacing: 1.8px; text-transform: uppercase; color: #2563eb; }' +
-    '.pb-eyebrow + h1 { margin: 1px 0 0; }' +
     '</style></head><body>' +
-    '<div class="print-brand"><img src="' + AF_LOGO + '" alt="U.S. AutoForce"><div><div class="pb-eyebrow">U.S. AutoForce</div><h1>Driver Training Record</h1></div></div>' +
+    '<div class="print-brand"><img src="' + AF_LOGO + '" alt="U.S. AutoForce"><div><h1>Driver Training Record</h1></div></div>' +
     '<div class="sub">Generated ' + today + ' · U.S. AutoForce · New-Hire Onboarding · ' + set.length + ' driver(s)</div>' +
     '<h2>Summary</h2>' +
     '<table><tr><th>Trainee</th><th>Hired</th><th>Trainer</th><th>Curriculum</th><th>Milestones</th><th>Progress</th><th>Status</th></tr>' + rows + '</table>' +
@@ -4765,7 +4763,8 @@ function afPaceSpec(r) {
   if (r.trainingCompleteDate) footnotes.push('PACE Behavioral Driving Evaluation Training Complete Date: ' + fmtDate(r.trainingCompleteDate));
   const afAudit = auditFootnote(r, 'PACE Evaluation');
   if (afAudit) footnotes.push(afAudit);
-  footnotes.push('Generated ' + fmtDateTime(new Date().toISOString()) + ' · U.S. AutoForce · Field Operations');
+  // the generation date now lives in the page footer (see afreport.js) so the
+  // report ends on record content instead of a trailing date line
   return {
     kind: 'PACE',
     name: r.driver || r.evaluator || 'Driver',
@@ -4890,7 +4889,8 @@ function afTrainSpec(tr) {
   if (coPending > 0) footnotes.unshift('PENDING — ' + coPending + ' of ' + CHECKOFF_TOTAL + ' check-off items still awaiting initials. This driver is NOT yet cleared to drive alone.');
   const afAudit = auditFootnote(tr, 'New Hire Training Record');
   if (afAudit) footnotes.push(afAudit);
-  footnotes.push('Generated ' + fmtDateTime(new Date().toISOString()) + ' · U.S. AutoForce · Field Operations');
+  // the generation date now lives in the page footer (see afreport.js) so the
+  // report ends on record content instead of a trailing date line
   return {
     kind: 'New Hire',
     name: tr.name || 'Trainee',

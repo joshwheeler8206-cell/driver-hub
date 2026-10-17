@@ -21,30 +21,43 @@
    * ------------------------------------------------------------------ */
 
   var PAGE_W = 612, PAGE_H = 792;     // US Letter, points
-  var M_L = 54, M_R = 54, M_T = 46, M_B = 54;
+  var M_L = 54, M_R = 54, M_T = 40, M_B = 46;
   var VAL_COL_MIN = 150;              // narrowest right-hand value column
   var VAL_COL_MAX = 210;              // widest a value may be before it wraps
 
-  // Helvetica-ish advance widths (units/1000) — good enough for wrapping.
+  // Real Helvetica / Helvetica-Bold AFM advance widths (units/1000) for ASCII
+  // 32..126.  The true metrics — not an approximation — are what make the
+  // right-aligned value column land *exactly* on the margin and wrap at the
+  // right word, so the document lines up instead of looking ragged.
+  var AFM_REG = [
+    278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,
+    556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,
+    1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,
+    667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,
+    333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,
+    556,556,333,500,278,556,500,722,500,500,500,334,260,334,584];
+  var AFM_BOLD = [
+    278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,
+    556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,
+    975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,
+    667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,
+    333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,
+    611,611,389,556,333,611,556,778,556,556,500,389,280,389,584];
+  // WinAnsi high bytes our document text can actually reach (em dash, quotes,
+  // degree, middot, accented vowels) — Helvetica / Helvetica-Bold widths.
+  var AFM_HI_REG = { 0x85:1000,0x91:333,0x92:222,0x93:333,0x94:333,0x95:350,0x96:556,
+    0x97:1000,0xa0:278,0xb0:400,0xb7:278,0xe1:556,0xe9:556,0xed:278,0xf1:556,0xf3:556,0xfa:556,0xfc:556 };
+  var AFM_HI_BOLD = { 0x85:1000,0x91:333,0x92:278,0x93:333,0x94:333,0x95:350,0x96:556,
+    0x97:1000,0xa0:278,0xb0:400,0xb7:278,0xe1:556,0xe9:556,0xed:278,0xf1:611,0xf3:611,0xfa:611,0xfc:611 };
   function charW(ch, bold) {
-    var c = ch.charCodeAt(0);
-    if (ch === ' ') return 278;
-    if ('. , : ; ! | \' ( ) [ ] -'.indexOf(ch) >= 0) return 333;
-    if (ch === '"') return 355;
-    if ('ilj'.indexOf(ch) >= 0) return 222;
-    if ('ftr'.indexOf(ch) >= 0) return 333;
-    if ('mw'.indexOf(ch) >= 0) return 833;
-    if ('MW'.indexOf(ch) >= 0) return 944;
-    if (c >= 48 && c <= 57) return 556;   // digits
-    if (c >= 65 && c <= 90) return 700;   // caps
-    if (c >= 97 && c <= 122) return 520;  // lower
-    return 556;
+    var b = winByte(ch.charCodeAt(0));   // the byte that actually gets printed
+    if (b >= 32 && b <= 126) return (bold ? AFM_BOLD : AFM_REG)[b - 32] || 556;
+    return (bold ? AFM_HI_BOLD : AFM_HI_REG)[b] || 556;
   }
   function textWidth(s, size, bold) {
     var w = 0;
     s = prepText(s);
     for (var i = 0; i < s.length; i++) w += charW(s.charAt(i), bold);
-    if (bold) w *= 1.06;
     return (w / 1000) * size;
   }
 
@@ -131,22 +144,29 @@
   };
 
   /* ---- a page canvas that emits a content stream ---- */
+  // U.S. AutoForce brand navy (#0b1120) — used for the header rule + title so
+  // the document reads as branded rather than as a plain text report.
+  var COL_NAVY = [0.043, 0.067, 0.125];
   function Page() { this.ops = []; this.usedImages = {}; }
-  Page.prototype.text = function (x, y, str, size, bold, gray, italic) {
+  function rgbOp(rgb, stroke) {
+    if (!rgb) return null;
+    return rgb[0] + ' ' + rgb[1] + ' ' + rgb[2] + (stroke ? ' RG ' : ' rg ');
+  }
+  Page.prototype.text = function (x, y, str, size, bold, gray, italic, rgb) {
     var f = bold ? '/F2' : italic ? '/F3' : '/F1';
-    var col = gray ? '0.32 g' : '0 g';
+    var col = rgbOp(rgb) || (gray ? '0.32 g' : '0 g');
     this.ops.push('BT ' + col + ' ' + f + ' ' + size + ' Tf 1 0 0 1 ' + x.toFixed(2) + ' ' + y.toFixed(2) +
       ' Tm ' + escStr(str) + ' Tj ET');
   };
-  Page.prototype.rtext = function (xRight, y, str, size, bold, gray) {
-    this.text(xRight - textWidth(str, size, bold), y, str, size, bold, gray);
+  Page.prototype.rtext = function (xRight, y, str, size, bold, gray, rgb) {
+    this.text(xRight - textWidth(str, size, bold), y, str, size, bold, gray, false, rgb);
   };
-  Page.prototype.line = function (x1, y1, x2, y2, w, gray) {
-    this.ops.push((gray ? '0.78 0.78 0.78 RG ' : '0 0 0 RG ') + (w || 0.6) + ' w ' +
+  Page.prototype.line = function (x1, y1, x2, y2, w, gray, rgb) {
+    this.ops.push((rgbOp(rgb, true) || (gray ? '0.78 0.78 0.78 RG ' : '0 0 0 RG ')) + (w || 0.6) + ' w ' +
       x1.toFixed(2) + ' ' + y1.toFixed(2) + ' m ' + x2.toFixed(2) + ' ' + y2.toFixed(2) + ' l S');
   };
-  Page.prototype.rect = function (x, y, w, h, gray) {
-    this.ops.push((gray ? '0.94 0.94 0.94 rg ' : '0 0 0 rg ') + x.toFixed(2) + ' ' + y.toFixed(2) + ' ' +
+  Page.prototype.rect = function (x, y, w, h, gray, rgb) {
+    this.ops.push((rgbOp(rgb) || (gray ? '0.94 0.94 0.94 rg ' : '0 0 0 rg ')) + x.toFixed(2) + ' ' + y.toFixed(2) + ' ' +
       w.toFixed(2) + ' ' + h.toFixed(2) + ' re f');
   };
   Page.prototype.img = function (name, x, y, w, h) {
@@ -177,11 +197,23 @@
     var pageNo = 0;
     var meta = spec.meta || [];
     var title = spec.title || 'Report';
+    var genDate = spec.genDate || stampDate();
 
+    // Footer: a thin rule, the brand mark (the real logo, not the words) on the
+    // left with the generation date, and the report id + page on the right.
+    // Putting the provenance here keeps it off the body, so the document ends
+    // on real content instead of a stray date line.
     function footer() {
       p.line(M_L, M_B - 12, PAGE_W - M_R, M_B - 12, 0.6, true);
-      p.text(M_L, M_B - 24, 'U.S. AutoForce', 7.5, false, true);
-      p.rtext(PAGE_W - M_R, M_B - 24, title + (spec.date ? '  ·  ' + spec.date : '') + '  ·  Page ' + pageNo, 7.5, false, true);
+      var fx = M_L;
+      if (imgs.logo) {
+        var fh = 11.5, fw = fh * (imgs.logo.w / imgs.logo.h);
+        p.img('ImLogo', M_L, M_B - 25.5, fw, fh);
+        fx = M_L + fw + 7;
+      }
+      var flabel = imgs.logo ? '' : 'U.S. AutoForce  ·  ';
+      p.text(fx, M_B - 23, flabel + 'Generated ' + genDate, 7.5, false, true);
+      p.rtext(PAGE_W - M_R, M_B - 23, title + (spec.date ? '  ·  ' + spec.date : '') + '  ·  Page ' + pageNo, 7.5, false, true);
     }
     function breakPage() {
       footer();
@@ -193,59 +225,76 @@
     function need(h) { if (y - h < M_B) breakPage(); }
     pageNo = 1;
 
-    /* header */
+    /* header — the U.S. AutoForce logo image, in navy, with the brand rule
+       underneath.  Losing the logo used to leave a bare text header; now the
+       mark is the anchor of the page. */
     var lw = 0;
-    var headH = 46;
+    var headH = 44;
     if (imgs.logo) {
-      lw = 132;
+      lw = 150;
       var lh = lw * (imgs.logo.h / imgs.logo.w);
-      if (lh > 86) { lh = 86; lw = lh * (imgs.logo.w / imgs.logo.h); }
+      if (lh > 92) { lh = 92; lw = lh * (imgs.logo.w / imgs.logo.h); }
       p.img('ImLogo', M_L, y - lh, lw, lh);
-      var tx = M_L + lw + 16;
-      p.text(tx, y - 16, title, 19, true);
-      if (spec.subtitle) p.text(tx, y - 32, spec.subtitle, 10, false, true);
-      headH = Math.max(lh, spec.stamp ? 62 : 46);
+      var tx = M_L + lw + 18;
+      p.text(tx, y - 16, title, 19, true, false, false, COL_NAVY);
+      if (spec.subtitle) p.text(tx, y - 31, spec.subtitle, 10, false, true);
+      headH = Math.max(lh, spec.stamp ? 60 : 44);
     } else {
-      p.text(M_L, y - 16, title, 19, true);
-      if (spec.subtitle) p.text(M_L, y - 32, spec.subtitle, 10, false, true);
-      headH = spec.stamp ? 62 : 46;
+      p.text(M_L, y - 16, title, 19, true, false, false, COL_NAVY);
+      if (spec.subtitle) p.text(M_L, y - 31, spec.subtitle, 10, false, true);
+      headH = spec.stamp ? 60 : 44;
     }
     // the completion stamp must show whether or not a logo was available
     if (spec.stamp) {
-      var sx = imgs.logo ? (M_L + lw + 16) : M_L;
+      var sx = imgs.logo ? (M_L + lw + 18) : M_L;
       var sw = textWidth(spec.stamp, 9.5, true) + 14;
-      p.rect(sx, y - 50, sw, 15, true);
-      p.text(sx + 7, y - 46, spec.stamp, 9.5, true);
+      p.rect(sx, y - 48, sw, 15, true);
+      p.text(sx + 7, y - 44, spec.stamp, 9.5, true, false, false, COL_NAVY);
     }
-    y -= headH + 12;
-    p.line(M_L, y, PAGE_W - M_R, y, 1.4);
-    y -= 20;
+    y -= headH + 10;
+    p.line(M_L, y, PAGE_W - M_R, y, 1.6, false, COL_NAVY);
+    y -= 18;
 
-    /* meta grid — two columns */
+    /* meta grid — two columns.  The value sits at a FIXED offset so the rows
+       line up as a table (label column / value column) instead of trailing
+       each label by its own width. */
     if (meta.length) {
       var colW = contentW / 2;
+      var valOff = 68;                    // label column width inside each half
+      var valAvail = colW - valOff - 6;
       for (var i = 0; i < meta.length; i += 2) {
-        need(18);
+        var cells = [];
         for (var c = 0; c < 2; c++) {
           var item = meta[i + c];
-          if (!item) continue;
-          var x = M_L + c * colW;
-          var lbl = item[0] + ' ';
-          p.text(x, y, lbl, 10, true);
-          p.text(x + textWidth(lbl, 10, true) + 1, y, String(item[1]), 10);
+          if (!item) { cells.push(null); continue; }
+          var mval = String(item[1] == null ? '' : item[1]);
+          var mlbl = String(item[0] == null ? '' : item[0]);
+          if (!/:\s*$/.test(mlbl)) mlbl += ':';   // labels normally arrive with the colon
+          cells.push({ lbl: mlbl, lines: wrap(mval, 10, false, valAvail) });
         }
-        y -= 15;
+        var rowH = 13;
+        cells.forEach(function (cl) {
+          if (cl && cl.lines.length > 1) rowH = Math.max(rowH, 13 + (cl.lines.length - 1) * 12);
+        });
+        need(rowH + 4);
+        cells.forEach(function (cl, ci) {
+          if (!cl) return;
+          var x = M_L + ci * colW;
+          p.text(x, y, cl.lbl, 10, true);
+          cl.lines.forEach(function (ln, li) { p.text(x + valOff, y - li * 12, ln, 10); });
+        });
+        y -= rowH;
       }
       y -= 8;
     }
 
     /* blocks */
     (spec.blocks || []).forEach(function (b) {
-      need(46);
-      p.text(M_L, y, b.heading, 12, true);
+      need(52);   // keep the heading with at least one row (no orphan headings)
+      p.text(M_L, y, b.heading, 12, true, false, false, COL_NAVY);
       y -= 4;
       p.line(M_L, y, PAGE_W - M_R, y, 0.8, true);
-      y -= 14;
+      y -= 13;
       (b.rows || []).forEach(function (row) {
         var label = String(row[0] == null ? '' : row[0]);
         var val = String(row[1] == null ? '' : row[1]);
@@ -272,7 +321,7 @@
           y -= 2;
         }
         p.line(M_L, y, PAGE_W - M_R, y, 0.4, true);
-        y -= 12;
+        y -= 10;
       });
       if (b.notes) {
         need(26);
@@ -280,18 +329,18 @@
         nl.forEach(function (l) { need(12); p.text(M_L, y, l, 9.5, false, true); y -= 12; });
         y -= 4;
       }
-      y -= 8;
+      y -= 6;
     });
 
     /* paragraphs */
     (spec.paragraphs || []).forEach(function (par) {
       need(40);
-      p.text(M_L, y, par.heading, 12, true);
+      p.text(M_L, y, par.heading, 12, true, false, false, COL_NAVY);
       y -= 4;
       p.line(M_L, y, PAGE_W - M_R, y, 0.8, true);
-      y -= 14;
+      y -= 13;
       wrap(par.text, 10, false, contentW).forEach(function (l) { need(13); p.text(M_L, y, l, 10); y -= 13; });
-      y -= 12;
+      y -= 8;
     });
 
     /* signatures */
@@ -303,15 +352,15 @@
       }
     }
     if (sigs.length) {
-      need(96);
-      p.text(M_L, y, 'Signatures', 12, true);
+      need(84);
+      p.text(M_L, y, 'Signatures', 12, true, false, false, COL_NAVY);
       y -= 4;
       p.line(M_L, y, PAGE_W - M_R, y, 0.8, true);
       y -= 12;
-      var perRow = 2, gap = 18, boxW = (contentW - gap) / perRow, boxH = 56;
+      var perRow = 2, gap = 18, boxW = (contentW - gap) / perRow, boxH = 50;
       for (var si = 0; si < sigs.length; si++) {
         var col = si % perRow;
-        if (col === 0) need(boxH + 30);
+        if (col === 0) need(boxH + 24);
         var bx = M_L + col * (boxW + gap);
         var img = sigs[si].img;
         var iw = boxW - 8, ih = iw * (img.h / img.w);
@@ -319,16 +368,18 @@
         p.img(sigs[si].n, bx, y - ih, iw, ih);
         p.line(bx, y - boxH, bx + boxW - 8, y - boxH, 0.7, true);
         p.text(bx, y - boxH - 11, sigs[si].label, 8.5, false, true);
-        if (col === perRow - 1 || si === sigs.length - 1) y -= boxH + 26;
+        if (col === perRow - 1 || si === sigs.length - 1) y -= boxH + 20;
       }
-      y -= 6;
+      y -= 4;
     }
 
-    /* footnotes */
+    /* footnotes — record content only; provenance lives in the footer.
+       An audit line can be long, so wrap it rather than letting it run off
+       the right edge of the page. */
     (spec.footnotes || []).forEach(function (f) {
-      need(14);
-      p.text(M_L, y, f, 9, false, true);
-      y -= 13;
+      var fl = wrap(f, 9, false, contentW);
+      need(11 * fl.length + 2);          // keep a single footnote together
+      fl.forEach(function (l) { p.text(M_L, y, l, 9, false, true); y -= 11; });
     });
 
     footer();
@@ -353,7 +404,8 @@
         var probe = new Image();
         probe.onload = function () {
           var c = document.createElement('canvas');
-          c.width = probe.width || 600; c.height = probe.height || 200;
+          c.width = (probe.naturalWidth || probe.width) || 600;
+          c.height = (probe.naturalHeight || probe.height) || 200;
           var ctx = c.getContext('2d');
           ctx.fillStyle = '#fff';
           ctx.fillRect(0, 0, c.width, c.height);
@@ -366,13 +418,32 @@
       } catch (e) { res(null); }
     });
   }
+  // Read width/height straight out of the JPEG's SOF marker.  The logo then
+  // embeds from the bytes alone, with no dependency on an Image decode that a
+  // mobile webview can silently drop (which left the report with no logo).
+  function jpegSize(a) {
+    var i = 2;
+    while (i + 9 < a.length) {
+      if (a[i] !== 0xFF) { i++; continue; }
+      var m = a[i + 1];
+      if (m === 0xD8 || m === 0xD9 || (m >= 0xD0 && m <= 0xD7)) { i += 2; continue; }
+      if (m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC) {
+        return { h: (a[i + 5] << 8) | a[i + 6], w: (a[i + 7] << 8) | a[i + 8] };
+      }
+      i += 2 + ((a[i + 2] << 8) | a[i + 3]);
+    }
+    return null;
+  }
   function passthroughImg(dataUrl) {
-    // already a JPEG (e.g. the app's AF_LOGO) — embed without re-encoding
+    // already a JPEG (e.g. the app's AF_LOGO) — embed the bytes untouched
     return new Promise(function (res) {
       try {
+        var bytes = dataUrlToBytes(dataUrl);
+        var dim = jpegSize(bytes);
+        if (dim && dim.w && dim.h) return res({ data: bytes, w: dim.w, h: dim.h, direct: true });
         var probe = new Image();
         probe.onload = function () {
-          res({ data: dataUrlToBytes(dataUrl), w: probe.width, h: probe.height, direct: true });
+          res({ data: bytes, w: probe.naturalWidth || probe.width, h: probe.naturalHeight || probe.height, direct: true });
         };
         probe.onerror = function () { res(null); };
         probe.src = dataUrl;
@@ -451,6 +522,12 @@
   function todayISO() {
     var t = new Date();
     return t.getFullYear() + '-' + ('0' + (t.getMonth() + 1)).slice(-2) + '-' + ('0' + t.getDate()).slice(-2);
+  }
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // "Oct 17, 2026" — the generation stamp shown in the footer.
+  function stampDate() {
+    var t = new Date();
+    return MONTHS[t.getMonth()] + ' ' + t.getDate() + ', ' + t.getFullYear();
   }
 
   function downloadBlob(blob, fname) {
