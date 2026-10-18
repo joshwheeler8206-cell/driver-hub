@@ -4949,7 +4949,7 @@ function afTrainReportBoth(tr) {
     if (list[1]) list[1].blob = res[1];
     const items = list.filter(function (x) { return x.blob; });
     if (AFReport.shareFiles) {
-      try { AFReport.shareFiles(items, { to: 'JWheeler@usautoforce.com' }); } catch (e) { console.error(e); }
+      try { AFReport.shareFiles(items); } catch (e) { console.error(e); }
     } else if (items.length) {
       items.forEach(function (it) { try { AFReport.downloadBlob ? AFReport.downloadBlob(it.blob, it.fname) : null; } catch (e) {} });
     }

@@ -545,6 +545,13 @@
   var last = null;   // { blob, fname, kind, name, date }
   var lastFiles = []; // array of { blob, fname, kind, name, date }
 
+  // Recipient hint for the "Email" button. This is only used by the mailto /
+  // no-share fallbacks: the normal phone path opens the share sheet, and the
+  // user picks the recipient (Compliance Group) there. Set
+  // window.AF_COMPLIANCE_EMAIL before this module loads to pre-address the
+  // fallback.
+  var COMPLIANCE_TO = (typeof window !== 'undefined' && window.AF_COMPLIANCE_EMAIL) || '';
+
   function canShareFiles(files) {
     try { return !!(navigator.canShare && navigator.canShare({ files: files })); } catch (e) { return false; }
   }
@@ -567,7 +574,7 @@
     var name = items[0] && items[0].name ? ' — ' + items[0].name : '';
     var date = items[0] && items[0].date ? ' (' + items[0].date + ')' : '';
     var subj = opts.subject || ('AutoForce ' + kinds + ' report' + name + date);
-    var to = opts.to || 'JWheeler@usautoforce.com';
+    var to = opts.to || COMPLIANCE_TO || '';
     var body = opts.body || ('Completed ' + kinds + ' report' + name + date + '. PDF' + (files.length > 1 ? 's' : '') + ' attached.');
     var payload = {
       files: files,
@@ -590,7 +597,7 @@
     }
     var mailto = 'mailto:' + encodeURIComponent(to) + '?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body + '\n\nFiles: ' + names);
     try { window.location.href = mailto; return; } catch (e) {}
-    alert('Emailing is not supported by this browser.\n\nOpen your Files / Downloads app and email:\n\n' + names + '\n\nTo: ' + to + '\nSubject: ' + subj);
+    alert('Emailing is not supported by this browser.\n\nOpen your Files / Downloads app and email:\n\n' + names + '\n\nTo: ' + (to || 'Compliance Group') + '\nSubject: ' + subj);
   }
 
   function shareFiles(items, opts) {
@@ -671,9 +678,9 @@
       return b;
     }
     var hasMany = (lastFiles && lastFiles.length > 1);
-    mk(hasMany ? '✉️  Email both PDFs' : '✉️  Email to boss', function () {
-      if (lastFiles && lastFiles.length > 1) shareFiles(lastFiles, { to: 'JWheeler@usautoforce.com' });
-      else shareLast({ to: 'JWheeler@usautoforce.com' });
+    mk(hasMany ? '✉️  Email both to Compliance Group' : '✉️  Email to Compliance Group', function () {
+      if (lastFiles && lastFiles.length > 1) shareFiles(lastFiles);
+      else shareLast();
     });
     mk('💾  Save PDF' + (hasMany ? 's' : ''), function () {
       var items = (lastFiles && lastFiles.length) ? lastFiles : (last ? [last] : []);
