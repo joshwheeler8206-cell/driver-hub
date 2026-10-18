@@ -3,6 +3,14 @@
 
 One app for the whole driver lifecycle. The Hub brings **Quarterly Review**, **PACE Evaluation**, **New-Hire Training**, **Certifications**, and **Route Notes** into a single screen, and shares the same local data stores as the standalone apps so everything stays in sync.
 
+## Demo video
+
+3:17 walkthrough built from real screen captures — home dashboard, training gates, 62-item check-off, signatures, PDFs, backup, and route notes.
+
+https://github.com/joshwheeler8206-cell/driver-hub/releases/download/demo-video/DriverHub-Demo-Final-Christopher.mp4
+
+<video src="https://github.com/joshwheeler8206-cell/driver-hub/releases/download/demo-video/DriverHub-Demo-Final-Christopher.mp4" controls width="360" preload="metadata"></video>
+
 ## Features
 
 - **Quarterly Review** – ride-along scoring by category, driver notes, signature capture, records list, quarterly filters, and a trends/scorecard view.
