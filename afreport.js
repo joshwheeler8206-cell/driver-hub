@@ -25,6 +25,52 @@
   var VAL_COL_MIN = 150;              // narrowest right-hand value column
   var VAL_COL_MAX = 210;              // widest a value may be before it wraps
 
+  /* Layout metrics.  `normal` is the airy multi-page report; `compact` is the
+     same document with tighter type and spacing, used by the PACE evaluation
+     so a full form lands on a single sheet of paper.  Keeping both sets here
+     means the two variants can never drift apart, and renderSpec() never has
+     to care which one it was handed. */
+  var METRICS = {
+    normal: {
+      mTop: 40, mBot: 46,
+      logoW: 150, logoHMax: 92, logoGap: 18,
+      titleSize: 19, titleDy: 16, subSize: 10, subDy: 31,
+      headMin: 44, headStamp: 60, headGapLine: 10, headGap: 18,
+      stampSize: 9.5, stampDy: 48, stampH: 15, stampTextDy: 44,
+      metaCols: 2, metaValOff: 68, metaValPad: 6, metaSize: 10,
+      metaRowH: 13, metaLineH: 12, metaGap: 8,
+      blockHeadSize: 12, blockHeadDy: 4, blockHeadGap: 13, blockGap: 6,
+      rowSize: 10, rowLineH: 13, rowRuleDy: 4, rowGap: 10, rowIndent: 10,
+      valColMin: VAL_COL_MIN, valColMax: VAL_COL_MAX,
+      valWrapIndent: 14, valWrapSize: 9.5, valWrapLineH: 12, valWrapGap: 2,
+      noteSize: 9.5, noteLineH: 12, noteGap: 4,
+      paraHeadSize: 12, paraHeadDy: 4, paraHeadGap: 13, paraSize: 10, paraLineH: 13, paraGap: 8,
+      sigHeadSize: 12, sigHeadDy: 4, sigHeadGap: 12,
+      sigPerRow: 2, sigColGap: 18, sigBoxH: 50, sigRowGap: 20, sigLabelDy: 11, sigLabelSize: 8.5, sigGap: 4,
+      footSize: 9, footLineH: 11,
+      minBlock: 52, minNote: 26, minPara: 40, minSig: 84,
+    },
+    compact: {
+      mTop: 34, mBot: 38,
+      logoW: 88, logoHMax: 54, logoGap: 12,
+      titleSize: 15, titleDy: 13, subSize: 9, subDy: 24,
+      headMin: 40, headStamp: 40, headGapLine: 8, headGap: 12,
+      stampSize: 8.5, stampDy: 41, stampH: 13, stampTextDy: 37,
+      metaCols: 3, metaValOff: 64, metaValPad: 5, metaSize: 9.5,
+      metaRowH: 11, metaLineH: 10, metaGap: 6,
+      blockHeadSize: 11, blockHeadDy: 3, blockHeadGap: 9, blockGap: 2,
+      rowSize: 9.5, rowLineH: 10.5, rowRuleDy: 3, rowGap: 7, rowIndent: 8,
+      valColMin: 110, valColMax: 165,
+      valWrapIndent: 12, valWrapSize: 9, valWrapLineH: 10, valWrapGap: 2,
+      noteSize: 9, noteLineH: 10.5, noteGap: 3,
+      paraHeadSize: 11, paraHeadDy: 3, paraHeadGap: 10, paraSize: 9.5, paraLineH: 11, paraGap: 5,
+      sigHeadSize: 11, sigHeadDy: 3, sigHeadGap: 10,
+      sigPerRow: 2, sigColGap: 18, sigBoxH: 32, sigRowGap: 12, sigLabelDy: 9, sigLabelSize: 7.5, sigGap: 6,
+      footSize: 8.5, footLineH: 9.5,
+      minBlock: 34, minNote: 20, minPara: 30, minSig: 58,
+    },
+  };
+
   // Real Helvetica / Helvetica-Bold AFM advance widths (units/1000) for ASCII
   // 32..126.  The true metrics — not an approximation — are what make the
   // right-aligned value column land *exactly* on the margin and wrap at the
@@ -192,7 +238,8 @@
   function renderSpec(spec, imgs) {
     var pages = [];
     var p = new Page();
-    var y = PAGE_H - M_T;
+    var C = spec.compact ? METRICS.compact : METRICS.normal;
+    var y = PAGE_H - C.mTop;
     var contentW = PAGE_W - M_L - M_R;
     var pageNo = 0;
     var meta = spec.meta || [];
@@ -204,15 +251,15 @@
     // Putting the provenance here keeps it off the body, so the document ends
     // on real content instead of a stray date line.
     function footer() {
-      p.line(M_L, M_B - 12, PAGE_W - M_R, M_B - 12, 0.6, true);
+      p.line(M_L, C.mBot - 12, PAGE_W - M_R, C.mBot - 12, 0.6, true);
       var fx = M_L;
       if (imgs.logo) {
         var fh = 11.5, fw = fh * (imgs.logo.w / imgs.logo.h);
-        p.img('ImLogo', M_L, M_B - 25.5, fw, fh);
+        p.img('ImLogo', M_L, C.mBot - 25.5, fw, fh);
         fx = M_L + fw + 7;
       }
       var flabel = imgs.logo ? '' : 'U.S. AutoForce  ·  ';
-      p.text(fx, M_B - 23, flabel + 'Generated ' + genDate, 7.5, false, true);
+      p.text(fx, C.mBot - 23, flabel + 'Generated ' + genDate, 7.5, false, true);
       p.rtext(PAGE_W - M_R, M_B - 23, title + (spec.date ? '  ·  ' + spec.date : '') + '  ·  Page ' + pageNo, 7.5, false, true);
     }
     function breakPage() {
@@ -220,9 +267,9 @@
       pages.push(p);
       p = new Page();
       pageNo++;
-      y = PAGE_H - M_T;
+      y = PAGE_H - C.mTop;
     }
-    function need(h) { if (y - h < M_B) breakPage(); }
+    function need(h) { if (y - h < C.mBot) breakPage(); }
     pageNo = 1;
 
     /* header — the U.S. AutoForce logo image, in navy, with the brand rule
@@ -231,70 +278,70 @@
     var lw = 0;
     var headH = 44;
     if (imgs.logo) {
-      lw = 150;
+      lw = C.logoW;
       var lh = lw * (imgs.logo.h / imgs.logo.w);
-      if (lh > 92) { lh = 92; lw = lh * (imgs.logo.w / imgs.logo.h); }
+      if (lh > C.logoHMax) { lh = C.logoHMax; lw = lh * (imgs.logo.w / imgs.logo.h); }
       p.img('ImLogo', M_L, y - lh, lw, lh);
-      var tx = M_L + lw + 18;
-      p.text(tx, y - 16, title, 19, true, false, false, COL_NAVY);
-      if (spec.subtitle) p.text(tx, y - 31, spec.subtitle, 10, false, true);
-      headH = Math.max(lh, spec.stamp ? 60 : 44);
+      var tx = M_L + lw + C.logoGap;
+      p.text(tx, y - C.titleDy, title, C.titleSize, true, false, false, COL_NAVY);
+      if (spec.subtitle) p.text(tx, y - C.subDy, spec.subtitle, C.subSize, false, true);
+      headH = Math.max(lh, spec.stamp ? C.headStamp : C.headMin);
     } else {
-      p.text(M_L, y - 16, title, 19, true, false, false, COL_NAVY);
-      if (spec.subtitle) p.text(M_L, y - 31, spec.subtitle, 10, false, true);
-      headH = spec.stamp ? 60 : 44;
+      p.text(M_L, y - C.titleDy, title, C.titleSize, true, false, false, COL_NAVY);
+      if (spec.subtitle) p.text(M_L, y - C.subDy, spec.subtitle, C.subSize, false, true);
+      headH = spec.stamp ? C.headStamp : C.headMin;
     }
     // the completion stamp must show whether or not a logo was available
     if (spec.stamp) {
       var sx = imgs.logo ? (M_L + lw + 18) : M_L;
-      var sw = textWidth(spec.stamp, 9.5, true) + 14;
-      p.rect(sx, y - 48, sw, 15, true);
-      p.text(sx + 7, y - 44, spec.stamp, 9.5, true, false, false, COL_NAVY);
+      var sw = textWidth(spec.stamp, C.stampSize, true) + 14;
+      p.rect(sx, y - C.stampDy, sw, C.stampH, true);
+      p.text(sx + 7, y - C.stampTextDy, spec.stamp, C.stampSize, true, false, false, COL_NAVY);
     }
-    y -= headH + 10;
+    y -= headH + C.headGapLine;
     p.line(M_L, y, PAGE_W - M_R, y, 1.6, false, COL_NAVY);
-    y -= 18;
+    y -= C.headGap;
 
     /* meta grid — two columns.  The value sits at a FIXED offset so the rows
        line up as a table (label column / value column) instead of trailing
        each label by its own width. */
     if (meta.length) {
-      var colW = contentW / 2;
-      var valOff = 68;                    // label column width inside each half
-      var valAvail = colW - valOff - 6;
-      for (var i = 0; i < meta.length; i += 2) {
+      var colW = contentW / C.metaCols;
+      var valOff = C.metaValOff;                 // label column width inside each cell
+      var valAvail = colW - valOff - C.metaValPad;
+      for (var i = 0; i < meta.length; i += C.metaCols) {
         var cells = [];
-        for (var c = 0; c < 2; c++) {
+        for (var c = 0; c < C.metaCols; c++) {
           var item = meta[i + c];
           if (!item) { cells.push(null); continue; }
           var mval = String(item[1] == null ? '' : item[1]);
           var mlbl = String(item[0] == null ? '' : item[0]);
           if (!/:\s*$/.test(mlbl)) mlbl += ':';   // labels normally arrive with the colon
-          cells.push({ lbl: mlbl, lines: wrap(mval, 10, false, valAvail) });
+          cells.push({ lbl: mlbl, lines: wrap(mval, C.metaSize, false, valAvail) });
         }
-        var rowH = 13;
+        var rowH = C.metaRowH;
         cells.forEach(function (cl) {
-          if (cl && cl.lines.length > 1) rowH = Math.max(rowH, 13 + (cl.lines.length - 1) * 12);
+          if (cl && cl.lines.length > 1) rowH = Math.max(rowH, C.metaRowH + (cl.lines.length - 1) * C.metaLineH);
         });
         need(rowH + 4);
         cells.forEach(function (cl, ci) {
           if (!cl) return;
           var x = M_L + ci * colW;
-          p.text(x, y, cl.lbl, 10, true);
-          cl.lines.forEach(function (ln, li) { p.text(x + valOff, y - li * 12, ln, 10); });
+          p.text(x, y, cl.lbl, C.metaSize, true);
+          cl.lines.forEach(function (ln, li) { p.text(x + valOff, y - li * C.metaLineH, ln, C.metaSize); });
         });
         y -= rowH;
       }
-      y -= 8;
+      y -= C.metaGap;
     }
 
     /* blocks */
     (spec.blocks || []).forEach(function (b) {
-      need(52);   // keep the heading with at least one row (no orphan headings)
-      p.text(M_L, y, b.heading, 12, true, false, false, COL_NAVY);
-      y -= 4;
+      need(C.minBlock);   // keep the heading with at least one row (no orphan headings)
+      p.text(M_L, y, b.heading, C.blockHeadSize, true, false, false, COL_NAVY);
+      y -= C.blockHeadDy;
       p.line(M_L, y, PAGE_W - M_R, y, 0.8, true);
-      y -= 13;
+      y -= C.blockHeadGap;
       (b.rows || []).forEach(function (row) {
         var label = String(row[0] == null ? '' : row[0]);
         var val = String(row[1] == null ? '' : row[1]);
@@ -302,45 +349,45 @@
            (a long ride-along comment, say) cannot be right-aligned or it runs
            back across the item label, so it is wrapped onto its own indented
            line underneath instead. */
-        var valW = textWidth(val, 10, true);
-        var sameLine = valW <= VAL_COL_MAX;
-        var lines = wrap(label, 10, false,
-          contentW - (sameLine ? Math.max(VAL_COL_MIN, valW) : VAL_COL_MAX) - 12);
-        var valLines = sameLine ? [] : wrap(val, 10, false, contentW - 14);
-        need(lines.length * 13 + valLines.length * 12 + 8);
+        var valW = textWidth(val, C.rowSize, true);
+        var sameLine = valW <= C.valColMax;
+        var lines = wrap(label, C.rowSize, false,
+          contentW - (sameLine ? Math.max(C.valColMin, valW) : C.valColMax) - 12);
+        var valLines = sameLine ? [] : wrap(val, C.rowSize, false, contentW - C.valWrapIndent);
+        need(lines.length * C.rowLineH + valLines.length * C.valWrapLineH + 8);
         for (var li = 0; li < lines.length; li++) {
-          p.text(M_L + (li ? 10 : 0), y, lines[li], 10, false, false);
-          y -= 13;
+          p.text(M_L + (li ? C.rowIndent : 0), y, lines[li], C.rowSize, false, false);
+          y -= C.rowLineH;
         }
         if (sameLine) {
-          y += 13; // value aligns to the row's first line
-          p.rtext(PAGE_W - M_R, y, val, 10, true);
-          y -= 4;
+          y += C.rowLineH; // value aligns to the row's first line
+          p.rtext(PAGE_W - M_R, y, val, C.rowSize, true);
+          y -= C.rowRuleDy;
         } else {
-          valLines.forEach(function (l) { p.text(M_L + 14, y, l, 9.5, false, true); y -= 12; });
-          y -= 2;
+          valLines.forEach(function (l) { p.text(M_L + C.valWrapIndent, y, l, C.valWrapSize, false, true); y -= C.valWrapLineH; });
+          y -= C.valWrapGap;
         }
         p.line(M_L, y, PAGE_W - M_R, y, 0.4, true);
-        y -= 10;
+        y -= C.rowGap;
       });
       if (b.notes) {
-        need(26);
-        var nl = wrap(b.notes, 9.5, false, contentW);
-        nl.forEach(function (l) { need(12); p.text(M_L, y, l, 9.5, false, true); y -= 12; });
-        y -= 4;
+        need(C.minNote);
+        var nl = wrap(b.notes, C.noteSize, false, contentW);
+        nl.forEach(function (l) { need(C.noteLineH); p.text(M_L, y, l, C.noteSize, false, true); y -= C.noteLineH; });
+        y -= C.noteGap;
       }
-      y -= 6;
+      y -= C.blockGap;
     });
 
     /* paragraphs */
     (spec.paragraphs || []).forEach(function (par) {
-      need(40);
-      p.text(M_L, y, par.heading, 12, true, false, false, COL_NAVY);
-      y -= 4;
+      need(C.minPara);
+      p.text(M_L, y, par.heading, C.paraHeadSize, true, false, false, COL_NAVY);
+      y -= C.paraHeadDy;
       p.line(M_L, y, PAGE_W - M_R, y, 0.8, true);
-      y -= 13;
-      wrap(par.text, 10, false, contentW).forEach(function (l) { need(13); p.text(M_L, y, l, 10); y -= 13; });
-      y -= 8;
+      y -= C.paraHeadGap;
+      wrap(par.text, C.paraSize, false, contentW).forEach(function (l) { need(C.paraLineH); p.text(M_L, y, l, C.paraSize); y -= C.paraLineH; });
+      y -= C.paraGap;
     });
 
     /* signatures */
@@ -352,34 +399,34 @@
       }
     }
     if (sigs.length) {
-      need(84);
-      p.text(M_L, y, 'Signatures', 12, true, false, false, COL_NAVY);
-      y -= 4;
+      need(C.minSig);
+      p.text(M_L, y, 'Signatures', C.sigHeadSize, true, false, false, COL_NAVY);
+      y -= C.sigHeadDy;
       p.line(M_L, y, PAGE_W - M_R, y, 0.8, true);
-      y -= 12;
-      var perRow = 2, gap = 18, boxW = (contentW - gap) / perRow, boxH = 50;
+      y -= C.sigHeadGap;
+      var perRow = C.sigPerRow, gap = C.sigColGap, boxW = (contentW - gap) / perRow, boxH = C.sigBoxH;
       for (var si = 0; si < sigs.length; si++) {
         var col = si % perRow;
-        if (col === 0) need(boxH + 24);
+        if (col === 0) need(boxH + C.sigRowGap + 4);
         var bx = M_L + col * (boxW + gap);
         var img = sigs[si].img;
         var iw = boxW - 8, ih = iw * (img.h / img.w);
         if (ih > boxH - 6) { ih = boxH - 6; iw = ih * (img.w / img.h); }
         p.img(sigs[si].n, bx, y - ih, iw, ih);
         p.line(bx, y - boxH, bx + boxW - 8, y - boxH, 0.7, true);
-        p.text(bx, y - boxH - 11, sigs[si].label, 8.5, false, true);
-        if (col === perRow - 1 || si === sigs.length - 1) y -= boxH + 20;
+        p.text(bx, y - boxH - C.sigLabelDy, sigs[si].label, C.sigLabelSize, false, true);
+        if (col === perRow - 1 || si === sigs.length - 1) y -= boxH + C.sigRowGap;
       }
-      y -= 4;
+      y -= C.sigGap;
     }
 
     /* footnotes — record content only; provenance lives in the footer.
        An audit line can be long, so wrap it rather than letting it run off
        the right edge of the page. */
     (spec.footnotes || []).forEach(function (f) {
-      var fl = wrap(f, 9, false, contentW);
-      need(11 * fl.length + 2);          // keep a single footnote together
-      fl.forEach(function (l) { p.text(M_L, y, l, 9, false, true); y -= 11; });
+      var fl = wrap(f, C.footSize, false, contentW);
+      need(C.footLineH * fl.length + 2);          // keep a single footnote together
+      fl.forEach(function (l) { p.text(M_L, y, l, C.footSize, false, true); y -= C.footLineH; });
     });
 
     footer();

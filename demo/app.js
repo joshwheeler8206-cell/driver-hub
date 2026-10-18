@@ -4774,6 +4774,9 @@ function afPaceSpec(r) {
     logo: typeof AF_LOGO !== 'undefined' ? AF_LOGO : null,
     stamp: r.training === 'completed' ? 'TRAINING COMPLETED'
       : r.training === 'continued' ? 'CONTINUED TRAINING' : '',
+    // a PACE evaluation is a one-page DOT form — the compact metrics keep the
+    // whole thing on a single sheet even with notes on every section
+    compact: true,
     meta, blocks, paragraphs, signatures, footnotes,
   };
 }

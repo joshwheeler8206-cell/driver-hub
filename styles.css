@@ -578,7 +578,13 @@ input.invalid, select.invalid, textarea.invalid { border-color: #dc2626 !importa
 .co-row:first-child { border-top: none; }
 .co-row.co-th { padding: 8px 14px; background: #f8fafc; font-size: 10.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
 .co-item { flex: 1; min-width: 0; font-size: 13px; overflow-wrap: break-word; }
-.co-drv, .co-tr { width: 70px; flex-shrink: 0; }
+/* Every group must reserve the SAME width for the trailing columns or the
+   initials boxes stop lining up down the card (the compliance group's longer
+   label used to be given an extra 34px, which shifted its columns left). So
+   both initials columns use the width the longest label needs — see the
+   spelled-out header wording in the 481px block below. */
+.co-drv { width: 70px; flex-shrink: 0; }
+.co-tr { width: 104px; flex-shrink: 0; }
 .co-date { width: 118px; flex-shrink: 0; }
 /* The header cells name the initials ("Trainee Initials" / "Trainer Initials").
    Phones get the short wording instead — see the 480px block below. */
@@ -840,11 +846,10 @@ input.invalid, select.invalid, textarea.invalid { border-color: #dc2626 !importa
   .co-drv, .co-tr, .co-date { flex: 1 1 0; width: auto; }
 }
 
-/* Compliance-review group signs off with "DOT Compliance Support" initials, so
-   that column needs a little more room than the plain "Trainer" one. Phones keep
-   the stacked/equal-flex layout above, so this only applies on wider screens. */
+/* The initials columns are the same width in every group (see .co-tr above) so
+   the boxes stay straight down the card; this just lets the spelled-out header
+   words wrap on wider screens. */
 @media (min-width: 481px) {
-  .co-table-wide .co-tr { width: 104px; }
   .co-row.co-th .co-drv, .co-row.co-th .co-tr { white-space: normal; line-height: 1.15; }
 }
 
