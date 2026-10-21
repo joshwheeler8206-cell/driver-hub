@@ -100,6 +100,11 @@ const ROUTES_DB = 'usaf_route_notes_db';
 const ROUTES_KEY = 'usaf_route_notes_v1';
 const ROSTER_DB = 'usaf_roster_db';
 const ROSTER_KEY = 'usaf_roster_v1';
+// Navigator Hub lives in its own app but on the same origin, so its store is readable here.
+const NAV_DB = 'usaf_navigator_db';
+const NAV_KEY = 'usaf_navigator_v1';
+const NAV_URL = 'https://joshwheeler8206-cell.github.io/navigator-hub/';
+const NAV_PROGRAMS = 7;
 
 const canIdb = typeof indexedDB !== 'undefined';
 const _dbCache = {};
@@ -677,7 +682,9 @@ function renderHome() {
     renderAttentionInbox(view);
   }
 
+  const navCard = dashCard('🧭', 'Navigator Hub', '—', 'Checking…', () => openNavigatorHub());
   const grid = el('div', { class: 'dash-grid' }, [
+    navCard,
     dashCard('👤', 'Drivers', String(roster.length),
       roster.length ? roster.length + ' profile(s) · autofills all apps' : 'No roster yet',
       () => renderRosterView()),
@@ -705,6 +712,24 @@ function renderHome() {
   ]);
   view.appendChild(grid);
 
+  navHubStats().then((ns) => {
+    const num = navCard.querySelector('.dash-num');
+    const sub = navCard.querySelector('.dash-sub');
+    if (!num || !sub) return;
+    if (!ns) {
+      num.textContent = '0';
+      sub.textContent = 'Open to set up locations & benefit values';
+      return;
+    }
+    num.textContent = String(ns.locations);
+    const parts = [
+      ns.locations + (ns.locations === 1 ? ' location' : ' locations'),
+      ns.confirmed + ' of ' + (ns.locations * NAV_PROGRAMS) + ' benefit values confirmed',
+    ];
+    if (ns.openQuestions) parts.push(ns.openQuestions + ' HR question' + (ns.openQuestions === 1 ? '' : 's') + ' open');
+    sub.textContent = parts.join(' · ');
+  }).catch(() => {});
+
   // Quick actions
   view.appendChild(el('div', { class: 'card' }, [
     el('h2', { class: 'card-title' }, ['Quick Actions']),
@@ -716,6 +741,7 @@ function renderHome() {
     el('div', { class: 'actions', style: 'margin-top:8px' }, [
       el('button', { class: 'btn', onclick: () => { switchTab('training'); addTrainee(); } }, ['+ Add Trainee']),
       el('button', { class: 'btn', onclick: () => { switchTab('certs'); addDriver(); } }, ['+ Add Driver Cert']),
+      el('button', { class: 'btn', onclick: () => openNavigatorHub() }, ['🧭 Navigator Hub']),
       el('button', { class: 'btn', onclick: () => { state.routes.sub = 'new'; switchTab('routes'); } }, ['+ New Route']),
     ]),
   ]));
@@ -993,6 +1019,22 @@ function renderAttentionInbox(view) {
     ]));
   }
   view.appendChild(list);
+}
+
+async function navHubStats() {
+  const st = await idbGet(NAV_DB, NAV_KEY);
+  if (!st || !Array.isArray(st.locations)) return null;
+  const vals = st.values || {};
+  let confirmed = 0;
+  for (const k in vals) if (vals[k] && vals[k].status === 'confirmed') confirmed++;
+  const openQuestions = (st.questions || []).filter((q) => q && !q.answered).length;
+  return { locations: st.locations.length, confirmed, openQuestions };
+}
+
+function openNavigatorHub() {
+  let w = null;
+  try { w = window.open(NAV_URL, '_blank', 'noopener'); } catch (e) { w = null; }
+  if (!w) location.href = NAV_URL;
 }
 
 function dashCard(icon, title, num, sub, onclick) {

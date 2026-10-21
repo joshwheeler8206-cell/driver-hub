@@ -1815,6 +1815,196 @@ var __SEED_DBS__ = {
 "medCardExp": ""
 }
 ]
+},
+"usaf_navigator_db": {
+"key": "usaf_navigator_v1",
+"value": {
+"locations": [
+{
+"id": "loc-fruitland",
+"name": "Fruitland",
+"city": "Fruitland",
+"state": "IA",
+"driverCount": 22,
+"benefitYear": "2026",
+"planStart": "2026-01-01",
+"carriers": "U.S. AutoForce",
+"union": "No",
+"published": true,
+"contacts": {
+"trainer": "Joshua Wheeler",
+"dispatch": "Todd Alston",
+"dispatcher": "Benjamin Staley",
+"hr": "Veronica Cease"
+},
+"auditId": "LOC-20260101-0001",
+"createdAt": "2026-01-01T08:00:00.000Z",
+"updatedAt": "2026-09-30T16:20:00.000Z"
+},
+{
+"id": "loc-cedar-rapids",
+"name": "Cedar Rapids",
+"city": "Cedar Rapids",
+"state": "IA",
+"driverCount": 9,
+"benefitYear": "2026",
+"planStart": "2026-01-01",
+"carriers": "U.S. AutoForce",
+"union": "No",
+"published": false,
+"contacts": {
+"trainer": "Joshua Wheeler",
+"dispatch": "Todd Alston",
+"dispatcher": "Benjamin Staley",
+"hr": "Veronica Cease"
+},
+"auditId": "LOC-20260101-0002",
+"createdAt": "2026-01-01T08:05:00.000Z",
+"updatedAt": "2026-09-18T11:02:00.000Z"
+}
+],
+"values": {
+"loc-fruitland:uniforms": {
+"amount": "5 shirt sets + 2 sweatshirts after 90 days",
+"eligibility": "All active drivers",
+"claim": "See HR / submit receipt in Concur",
+"effective": "2026-01-01",
+"confirmedBy": "Veronica Cease",
+"status": "confirmed",
+"confirmedAt": "2026-09-30T16:20:00.000Z",
+"auditId": "NAV-20260930-0001",
+"updatedAt": "2026-09-30T16:20:00.000Z"
+},
+"loc-fruitland:shoes": {
+"amount": "$125 per pair, 2 pairs per year",
+"eligibility": "All active drivers",
+"claim": "See HR / submit receipt in Concur",
+"effective": "2026-01-01",
+"confirmedBy": "Veronica Cease",
+"status": "confirmed",
+"confirmedAt": "2026-09-30T16:20:00.000Z",
+"auditId": "NAV-20260930-0002",
+"updatedAt": "2026-09-30T16:20:00.000Z"
+},
+"loc-fruitland:wellness": {
+"amount": "$200 per year, receipt required",
+"eligibility": "All active drivers",
+"claim": "See HR / submit receipt in Concur",
+"effective": "2026-01-01",
+"confirmedBy": "Veronica Cease",
+"status": "confirmed",
+"confirmedAt": "2026-09-30T16:20:00.000Z",
+"auditId": "NAV-20260930-0003",
+"updatedAt": "2026-09-30T16:20:00.000Z"
+},
+"loc-fruitland:steps": {
+"amount": "$25/month at 8,000 steps/day",
+"eligibility": "All active drivers",
+"claim": "See HR / submit receipt in Concur",
+"effective": "2026-01-01",
+"confirmedBy": "Veronica Cease",
+"status": "confirmed",
+"confirmedAt": "2026-09-30T16:20:00.000Z",
+"auditId": "NAV-20260930-0004",
+"updatedAt": "2026-09-30T16:20:00.000Z"
+},
+"loc-fruitland:rave": {
+"amount": "50 points = $25, anyone can nominate",
+"eligibility": "All active drivers",
+"claim": "See HR / submit receipt in Concur",
+"effective": "2026-01-01",
+"confirmedBy": "Veronica Cease",
+"status": "confirmed",
+"confirmedAt": "2026-09-30T16:20:00.000Z",
+"auditId": "NAV-20260930-0005",
+"updatedAt": "2026-09-30T16:20:00.000Z"
+},
+"loc-fruitland:dotm": {
+"amount": "100 RAVE points + team lunch",
+"eligibility": "All active drivers",
+"claim": "See HR / submit receipt in Concur",
+"effective": "2026-01-01",
+"confirmedBy": "Veronica Cease",
+"status": "confirmed",
+"confirmedAt": "2026-09-30T16:20:00.000Z",
+"auditId": "NAV-20260930-0006",
+"updatedAt": "2026-09-30T16:20:00.000Z"
+},
+"loc-fruitland:screen": {
+"amount": "$600/year premium discount",
+"eligibility": "All active drivers",
+"claim": "See HR / submit receipt in Concur",
+"effective": "2026-01-01",
+"confirmedBy": "Veronica Cease",
+"status": "confirmed",
+"confirmedAt": "2026-09-30T16:20:00.000Z",
+"auditId": "NAV-20260930-0007",
+"updatedAt": "2026-09-30T16:20:00.000Z"
+},
+"loc-cedar-rapids:uniforms": {
+"amount": "5 shirt sets + 2 sweatshirts after 90 days",
+"eligibility": "All active drivers",
+"claim": "",
+"effective": "2026-01-01",
+"confirmedBy": "",
+"status": "draft",
+"auditId": "NAV-20260918-0001",
+"updatedAt": "2026-09-18T11:02:00.000Z"
+},
+"loc-cedar-rapids:shoes": {
+"amount": "$125 per pair, 2 pairs per year",
+"eligibility": "All active drivers",
+"claim": "",
+"effective": "2026-01-01",
+"confirmedBy": "",
+"status": "draft",
+"auditId": "NAV-20260918-0002",
+"updatedAt": "2026-09-18T11:02:00.000Z"
+},
+"loc-cedar-rapids:wellness": {
+"amount": "$200 per year, receipt required",
+"eligibility": "All active drivers",
+"claim": "",
+"effective": "2026-01-01",
+"confirmedBy": "",
+"status": "draft",
+"auditId": "NAV-20260918-0003",
+"updatedAt": "2026-09-18T11:02:00.000Z"
+}
+},
+"rides": [
+{
+"id": "ride-1",
+"locId": "loc-fruitland",
+"date": "2026-09-12",
+"drivers": "Kyle Osei",
+"covered": [
+"uniforms",
+"rave"
+],
+"notes": "Went through the benefit sheet after the ride-along.",
+"questions": [],
+"auditId": "RIDE-20260912-0001"
+}
+],
+"questions": [
+{
+"id": "q-1",
+"locId": "loc-cedar-rapids",
+"text": "Is the shoe reimbursement prorated for part-time drivers?",
+"answered": false,
+"createdAt": "2026-09-18T11:05:00.000Z"
+},
+{
+"id": "q-2",
+"locId": "loc-fruitland",
+"text": "Do step-goal rewards count toward taxable wages?",
+"answered": false,
+"createdAt": "2026-09-12T15:40:00.000Z"
+}
+],
+"settings": {}
+}
 }
 };
 
