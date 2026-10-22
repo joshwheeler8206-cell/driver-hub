@@ -3011,7 +3011,7 @@ function toggleNavGroup(name) {
 }
 
 function navProgTable(tr, g) {
-  const wrap = el('div', { class: 'co-table co-table-wide' });
+  const wrap = el('div', { class: 'co-table' });
   wrap.appendChild(el('div', { class: 'co-row co-th' }, [
     el('div', { class: 'co-item' }, ['Item']),
     coHeadCell('co-drv', 'New Hire Initials', 'New Hire'),
@@ -5016,7 +5016,7 @@ function openPaceReport(id) {
 
 function registerSW() {
   if ('serviceWorker' in navigator) {
-    /* SW disabled in demo */
+    navigator.serviceWorker.register('sw.js');
     navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
   }
 }
