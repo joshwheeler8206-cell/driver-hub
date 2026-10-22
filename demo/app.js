@@ -772,6 +772,14 @@ function renderHome() {
     el('span', { class: 'fl' }, ['U.S. AutoForce']),
     ' · Driver Hub v1.0 · Field Operations · Data stays on this device',
   ]));
+  view.appendChild(el('p', { class: 'app-footer', style: 'margin-top:6px' }, [
+    el('button', {
+      class: 'linkbtn', type: 'button',
+      style: 'background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;cursor:pointer;opacity:.8',
+      onclick: () => window.open(
+        'https://joshwheeler8206-cell.github.io/showcase/', '_blank')
+    }, ['📖 See the story behind these apps'])
+  ]));
 }
 
 function anniversariesUpcoming(fromISO, windowDays) {
