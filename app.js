@@ -684,7 +684,6 @@ function renderHome() {
 
   const navCard = dashCard('🧭', 'Navigator Hub', '—', 'Checking…', () => openNavigatorHub());
   const grid = el('div', { class: 'dash-grid' }, [
-    navCard,
     dashCard('👤', 'Drivers', String(roster.length),
       roster.length ? roster.length + ' profile(s) · autofills all apps' : 'No roster yet',
       () => renderRosterView()),
@@ -694,6 +693,7 @@ function renderHome() {
     dashCard('⏱️', 'PACE Drives', String(paceEvals.length),
       latestPace ? 'Last: ' + (latestPace.evaluator || '—') + ' · ' + latestPace.date + (pacesDue ? ' · ' + pacesDue + ' due' : '') : 'No PACE evals yet',
       () => switchTab('pace')),
+    navCard,
     dashCard('📋', 'Driver Reviews', String(evals.length),
       latestEval ? 'Last: ' + latestEval.driverName + ' · ' + latestEval.evalDate : 'No reviews yet',
       () => switchTab('review')),
