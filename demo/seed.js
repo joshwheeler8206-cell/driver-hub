@@ -931,7 +931,162 @@ var __SEED_DBS__ = {
 "dot": "data:image/png;base64,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",
 "date": "2026-06-05"
 },
-"notes": "Ready for release."
+"notes": "Ready for release.",
+"navProg": {
+"navigator": "B. Tran",
+"department": "Fruitland",
+"startDate": "2026-05-01",
+"newHire": "",
+"navigatorInitials": "BT",
+"newHireInitials": "KO",
+"items": {
+"New Hire and Navigator have lunch together": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Navigator introduces the New Hire to team members, leaders, and HRBP during huddles, meetings, and warehouse tours": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Navigator is the first point of contact for the New Hire": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Weekly touch-bases for the total 90-day introductory period": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Workday & policy walk-through \u2014 time off requests, paycheck, direct deposit, benefits, and more": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Authenticator app set up, Workday app, and password change (day 2)": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Attendance and meal & rest break policies": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Safety and driver policies": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Operations and dress code policies \u2014 uniforms, boot reimbursement, etc.": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Tour of the facility \u2014 emergency exits, first aid kits, safety stations": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Break room(s), restrooms, offices, and conference rooms": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Tour of the warehouse, truck yard, parking lot, etc.": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Engagement & recognition \u2014 Officevibe, Virgin Pulse, RAVE Recognition, end-of-month celebrations & Employee of the Month, holiday parties, milestones, birthdays and anniversaries, Great Places to Work certification": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Tour of www.myusventure.com \u2014 Total Rewards, Team Member Resources, Community Engagement, Learning & Development, USV/USAF company stores, Speak Up Hotline": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Driver trainings & sign-offs": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"PACE training (emphasis on G.O.A.L.)": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Driver file building": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"DOT compliance training": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Material handler trainings & sign-offs \u2014 electric forklift inspections/functions, PIV certification read & signed off for forklifts and order pickers": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Understand pull rate, receiving, loading/unloading": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Tire stacking and bin maintenance standards": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Pallet standards": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Fall protection training & sign-offs": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"RF scanners": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Safety trainings, rules and regulations \u2014 daily stretching, proper lifting techniques, PPE, safety cards, incident and injury procedures": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"New hire status per company policies": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"New hire 90-day performance evaluation": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Operations Leader ride-along / shadowing": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+},
+"Navigator review on the New Hire": {
+"date": "2026-06-02",
+"nh": "KO",
+"nav": "BT"
+}
+}
+}
 },
 {
 "id": "t2",
@@ -1385,7 +1540,162 @@ var __SEED_DBS__ = {
 }
 }
 },
-"notes": "Week 4 of new-hire program."
+"notes": "Week 4 of new-hire program.",
+"navProg": {
+"navigator": "S. Nakamura",
+"department": "Cedar Rapids",
+"startDate": "2026-07-06",
+"newHire": "",
+"navigatorInitials": "SN",
+"newHireInitials": "RH",
+"items": {
+"New Hire and Navigator have lunch together": {
+"date": "2026-06-02",
+"nh": "RH",
+"nav": "SN"
+},
+"Navigator introduces the New Hire to team members, leaders, and HRBP during huddles, meetings, and warehouse tours": {
+"date": "2026-06-02",
+"nh": "RH",
+"nav": "SN"
+},
+"Navigator is the first point of contact for the New Hire": {
+"date": "2026-06-02",
+"nh": "RH",
+"nav": "SN"
+},
+"Weekly touch-bases for the total 90-day introductory period": {
+"date": "2026-06-02",
+"nh": "RH",
+"nav": "SN"
+},
+"Workday & policy walk-through \u2014 time off requests, paycheck, direct deposit, benefits, and more": {
+"date": "2026-06-02",
+"nh": "RH",
+"nav": "SN"
+},
+"Authenticator app set up, Workday app, and password change (day 2)": {
+"date": "2026-06-02",
+"nh": "RH",
+"nav": "SN"
+},
+"Attendance and meal & rest break policies": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"Safety and driver policies": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"Operations and dress code policies \u2014 uniforms, boot reimbursement, etc.": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"Tour of the facility \u2014 emergency exits, first aid kits, safety stations": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"Break room(s), restrooms, offices, and conference rooms": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"Tour of the warehouse, truck yard, parking lot, etc.": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"Engagement & recognition \u2014 Officevibe, Virgin Pulse, RAVE Recognition, end-of-month celebrations & Employee of the Month, holiday parties, milestones, birthdays and anniversaries, Great Places to Work certification": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"Tour of www.myusventure.com \u2014 Total Rewards, Team Member Resources, Community Engagement, Learning & Development, USV/USAF company stores, Speak Up Hotline": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"Driver trainings & sign-offs": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"PACE training (emphasis on G.O.A.L.)": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"Driver file building": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"DOT compliance training": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"Material handler trainings & sign-offs \u2014 electric forklift inspections/functions, PIV certification read & signed off for forklifts and order pickers": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"Understand pull rate, receiving, loading/unloading": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"Tire stacking and bin maintenance standards": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"Pallet standards": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"Fall protection training & sign-offs": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"RF scanners": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"Safety trainings, rules and regulations \u2014 daily stretching, proper lifting techniques, PPE, safety cards, incident and injury procedures": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"New hire status per company policies": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"New hire 90-day performance evaluation": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"Operations Leader ride-along / shadowing": {
+"date": "",
+"nh": "",
+"nav": ""
+},
+"Navigator review on the New Hire": {
+"date": "",
+"nh": "",
+"nav": ""
+}
+}
+}
 }
 ]
 },

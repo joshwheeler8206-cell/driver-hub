@@ -2328,6 +2328,63 @@ const CHECKOFF_GROUPS = [
 
 const CHECKOFF_TOTAL = CHECKOFF_GROUPS.reduce((n, g) => n + g.items.length, 0);
 
+/* ---------- Navigator Program (90-day onboarding packet) ----------
+   Transcribed from the printed "Navigator Program Onboarding Packet" the new
+   hire and their Navigator complete together over the 90-day introductory
+   period. Every item is initialled by BOTH sides (new hire + Navigator) and
+   dated. It is its own document, so it prints on its own page — HR gets the
+   completed Navigator portion separately from the driver check-off. */
+const NAV_GROUPS = [
+  { name: 'Building Strong Trusting Relationships', items: [
+    'New Hire and Navigator have lunch together',
+    'Navigator introduces the New Hire to team members, leaders, and HRBP during huddles, meetings, and warehouse tours',
+    'Navigator is the first point of contact for the New Hire',
+    'Weekly touch-bases for the total 90-day introductory period',
+  ]},
+  { name: 'Enhance New Hires\' Job Satisfaction', items: [
+    'Workday & policy walk-through — time off requests, paycheck, direct deposit, benefits, and more',
+    'Authenticator app set up, Workday app, and password change (day 2)',
+    'Attendance and meal & rest break policies',
+    'Safety and driver policies',
+    'Operations and dress code policies — uniforms, boot reimbursement, etc.',
+    'Tour of the facility — emergency exits, first aid kits, safety stations',
+    'Break room(s), restrooms, offices, and conference rooms',
+    'Tour of the warehouse, truck yard, parking lot, etc.',
+    'Engagement & recognition — Officevibe, Virgin Pulse, RAVE Recognition, end-of-month celebrations & Employee of the Month, holiday parties, milestones, birthdays and anniversaries, Great Places to Work certification',
+    'Tour of www.myusventure.com — Total Rewards, Team Member Resources, Community Engagement, Learning & Development, USV/USAF company stores, Speak Up Hotline',
+  ]},
+  { name: 'Increase Job Knowledge and Safety', items: [
+    'Driver trainings & sign-offs',
+    'PACE training (emphasis on G.O.A.L.)',
+    'Driver file building',
+    'DOT compliance training',
+    'Material handler trainings & sign-offs — electric forklift inspections/functions, PIV certification read & signed off for forklifts and order pickers',
+    'Understand pull rate, receiving, loading/unloading',
+    'Tire stacking and bin maintenance standards',
+    'Pallet standards',
+    'Fall protection training & sign-offs',
+    'RF scanners',
+    'Safety trainings, rules and regulations — daily stretching, proper lifting techniques, PPE, safety cards, incident and injury procedures',
+  ]},
+  { name: 'Operations Leader Evaluation', items: [
+    'New hire status per company policies',
+    'New hire 90-day performance evaluation',
+    'Operations Leader ride-along / shadowing',
+    'Navigator review on the New Hire',
+  ]},
+];
+
+const NAV_TOTAL = NAV_GROUPS.reduce((n, g) => n + g.items.length, 0);
+
+// U.S. Venture's four differentiating values — walked through together on page 2
+// of the packet (kept as reference, no initials required).
+const NAV_VALUES = [
+  ['Caring Relationships', 'Fosters fun and friendships. Represent the company in a positive manner. Listens and communicates appropriately and effectively. Collaborates with and positively contributes to the team. Displays positive, professional behavior. Develops caring and professional relationships to ensure external and internal customer needs are met. Shows compassion and respect for others.'],
+  ['Entrepreneurial Spirit', 'Understands how your role supports the vision and strategy of the organization. Be aware of trends and information affecting the organization. Support and participate in process improvement activities. Adjust to new methods and procedures. Be a change-maker who identifies potential problems and develops and implements solutions.'],
+  ['Strategic Foresight', 'Broaden your perspective on the big picture of the company, policies, and procedures. Visualize the future and contribute with a proactive approach.'],
+  ['High Performance', 'Demonstrate initiative and ownership of work. Deliver high quality, accurate work. Your work is consistent, timely, thorough, and complete. Follow established policies and procedures. Work safely in all activities.'],
+];
+
 // Most groups are initialled by the trainer. The compliance review is signed off
 // by DOT Compliance Support instead, so its column and prompts say so.
 function coInitialsLabel(g) {
@@ -2362,6 +2419,34 @@ function ensureCheckoffs(tr) {
 function coCount(tr) {
   const items = Object.values(tr.checkoffs || {}).filter((s) => coDone(s));
   return items.length;
+}
+
+/* ---------- Navigator Program helpers (90-day onboarding) ---------- */
+function navItem(tr, item) {
+  return (tr.navProg && tr.navProg.items && tr.navProg.items[item]) || { nh: '', nav: '', date: '' };
+}
+
+function ensureNavProg(tr) {
+  if (!tr) return tr;
+  if (!tr.navProg || typeof tr.navProg !== 'object') tr.navProg = { navigator: '', department: '', startDate: '', items: {} };
+  if (!tr.navProg.items || typeof tr.navProg.items !== 'object') tr.navProg.items = {};
+  for (const g of NAV_GROUPS) {
+    for (const item of g.items) {
+      if (!tr.navProg.items[item]) tr.navProg.items[item] = { nh: '', nav: '', date: '' };
+    }
+  }
+  return tr;
+}
+
+// A Navigator Program row is complete only with a real date AND real initials
+// from BOTH sides (2–3 letters) — the same rule the check-off uses.
+function navDone(s) {
+  return !!(s && s.date && coInitOk(s.nh) && coInitOk(s.nav));
+}
+
+function navCount(tr) {
+  ensureNavProg(tr);
+  return Object.values(tr.navProg.items).filter((s) => navDone(s)).length;
 }
 
 /* ---------- New-Hire Driver Training Process (gated) ---------- */
@@ -2453,7 +2538,7 @@ function ensureTraits(tr) {
   if (!tr.auditId) { tr.auditId = auditId('TRN'); tr.migrated = true; }  // pre-audit record: stamp, don't re-date
   if (!tr.topics || typeof tr.topics !== 'object') { tr.topics = {}; for (const t of TOPICS) tr.topics[t] = { date: '', trainer: '' }; }
   if (!tr.milestones || typeof tr.milestones !== 'object') { tr.milestones = {}; for (const m of MILESTONES) tr.milestones[m] = { date: '', notes: '' }; }
-  return ensureProcess(ensureCheckoffs(tr));
+  return ensureNavProg(ensureProcess(ensureCheckoffs(tr)));;
 }
 
 // Two phase-4 requirements are derived from real data instead of manual taps,
@@ -2778,6 +2863,8 @@ function renderTraineeDetail() {
 
   view.appendChild(renderCheckoffCard(ensureCheckoffs(tr)));
 
+  view.appendChild(renderNavProgCard(tr));
+
   view.appendChild(renderSignoffCard(tr));
 
   view.appendChild(el('div', { class: 'card' }, [
@@ -2861,6 +2948,152 @@ function coTable(tr, g) {
 
 function saveCo(tr) {
   persist(TRAIN_DB, TRAIN_KEY, trainees);
+}
+function renderNavProgCard(tr) {
+  ensureNavProg(tr);
+  const n = tr.navProg;
+  const done = navCount(tr);
+  const card = el('div', { class: 'card navp' }, [
+    el('div', { class: 'section-head' }, [
+      el('h2', { class: 'card-title navp-sum' }, ['Navigator Program — 90-Day Onboarding (' + done + '/' + NAV_TOTAL + ')']),
+    ]),
+    el('p', { class: 'rsub' }, ['The Navigator Program packet is completed together over the new hire\'s 90-day introductory period. Each item takes BOTH sets of initials — the new hire and the Navigator — plus the date. It prints on its own sheet so HR receives the completed Navigator portion separately from the driver check-off.']),
+    el('label', { class: 'field' }, [
+      el('span', { class: 'field-label' }, ['Navigator']),
+      el('input', { type: 'text', class: 'co-init', id: 'navpNavigator', placeholder: 'Navigator name', value: n.navigator || '', oninput: (e) => { n.navigator = e.target.value; saveCo(tr); } }),
+    ]),
+    el('label', { class: 'field' }, [
+      el('span', { class: 'field-label' }, ['New Hire / Driver']),
+      el('input', { type: 'text', class: 'co-init', id: 'navpName', placeholder: 'New hire name', value: n.newHire || tr.name || '', oninput: (e) => { n.newHire = e.target.value; saveCo(tr); } }),
+    ]),
+    el('label', { class: 'field' }, [
+      el('span', { class: 'field-label' }, ['Department / Location']),
+      el('input', { type: 'text', class: 'co-init', id: 'navpDept', placeholder: 'Department or location', value: n.department || '', oninput: (e) => { n.department = e.target.value; saveCo(tr); } }),
+    ]),
+    el('label', { class: 'field' }, [
+      el('span', { class: 'field-label' }, ['90-Day Start Date']),
+      el('input', { type: 'date', id: 'navpStart', value: n.startDate || '', onchange: (e) => { n.startDate = e.target.value; saveCo(tr); } }),
+    ]),
+    ...NAV_GROUPS.map((g) => navProgGroup(tr, g)),
+    el('details', { class: 'navp-values' }, [
+      el('summary', {}, ['U.S. Venture\'s Values (reference — walked through together)']),
+      ...NAV_VALUES.map(([t, d]) => el('div', { class: 'navp-value' }, [
+        el('div', { class: 'navp-value-t' }, [t]),
+        el('div', { class: 'navp-value-d' }, [d]),
+      ])),
+    ]),
+    el('div', { class: 'btn-row' }, [
+      el('button', { class: 'btn primary', onclick: () => navProgSetAll(tr) }, ['Mark whole program complete']),
+      el('button', { class: 'btn ghost small', onclick: () => openNavigatorPacket() }, ['📄 Blank packet (PDF)']),
+    ]),
+  ]);
+  return card;
+}
+
+function navProgGroup(tr, g) {
+  const open = !!state.training.coOpen['nav:' + g.name];
+  const done = g.items.filter((it) => navDone(navItem(tr, it))).length;
+  return el('div', { class: 'co-group' }, [
+    el('button', { class: 'co-head' + (open ? ' open' : ''), onclick: () => toggleNavGroup(g.name) }, [
+      el('span', { class: 'co-title' }, [g.name]),
+      el('span', { class: 'co-count' }, [done + '/' + g.items.length]),
+      el('span', { class: 'rn-chevron' }, ['▾']),
+    ]),
+    ...(open ? [navProgTable(tr, g)] : []),
+  ]);
+}
+
+function toggleNavGroup(name) {
+  const k = 'nav:' + name;
+  if (state.training.coOpen[k]) delete state.training.coOpen[k];
+  else state.training.coOpen[k] = true;
+  renderTraineeDetail();
+}
+
+function navProgTable(tr, g) {
+  const wrap = el('div', { class: 'co-table co-table-wide' });
+  wrap.appendChild(el('div', { class: 'co-row co-th' }, [
+    el('div', { class: 'co-item' }, ['Item']),
+    coHeadCell('co-drv', 'New Hire Initials', 'New Hire'),
+    coHeadCell('co-tr', 'Navigator Initials', 'Navigator'),
+    el('div', { class: 'co-date' }, ['Date']),
+  ]));
+  for (const item of g.items) {
+    const s = navItem(tr, item);
+    const complete = navDone(s);
+    wrap.appendChild(el('div', { class: 'co-row' + (complete ? ' done' : '') }, [
+      el('div', { class: 'co-item' }, [item]),
+      el('div', { class: 'co-drv' }, [el('input', { type: 'text', class: 'co-input', maxlength: '3', placeholder: '·', value: s.nh || '', oninput: (e) => { const v = e.target.value.toUpperCase(); if (e.target.value !== v) e.target.value = v; s.nh = v; saveCo(tr); refreshCo(e.target); } })]),
+      el('div', { class: 'co-tr' }, [el('input', { type: 'text', class: 'co-input', maxlength: '3', placeholder: '·', value: s.nav || '', oninput: (e) => { const v = e.target.value.toUpperCase(); if (e.target.value !== v) e.target.value = v; s.nav = v; saveCo(tr); refreshCo(e.target); } })]),
+      el('div', { class: 'co-date' }, [el('input', { type: 'date', class: 'co-input', value: s.date || '', onchange: (e) => { s.date = e.target.value; saveCo(tr); refreshCo(e.target); } })]),
+    ]));
+  }
+  const pending = g.items.filter((it) => !navItem(tr, it).date);
+  wrap.appendChild(el('div', { class: 'co-actions' }, [
+    el('button', { class: 'btn ghost small', onclick: () => completeNavGroup(tr, g) }, ['Mark group complete' + (pending.length ? ' (' + pending.length + ')' : '')]),
+  ]));
+  return wrap;
+}
+
+// One tap fills a whole group: it asks once for the new hire's initials and the
+// Navigator's, then stamps today's date on every item still missing one.
+function completeNavGroup(tr, g) {
+  ensureNavProg(tr);
+  const pending = g.items.filter((it) => !navItem(tr, it).date);
+  if (!pending.length) { toast('This group is already completed.'); return; }
+  const nh = navAskInitials(tr, 'newHire', 'New hire initials for this group?');
+  if (nh === null) return;
+  const nav = navAskInitials(tr, 'navigatorInitials', 'Navigator initials for this group?');
+  if (nav === null) return;
+  for (const it of pending) {
+    const s = tr.navProg.items[it];
+    s.date = todayISO();
+    s.nh = nh;
+    s.nav = nav;
+  }
+  stampRecord(tr, 'TRN');
+  persist(TRAIN_DB, TRAIN_KEY, trainees);
+  renderTraineeDetail();
+  toast(pending.length + ' Navigator Program item(s) completed for ' + g.name + '.');
+}
+
+function navAskInitials(tr, field, label) {
+  let v = (tr.navProg[field] || '').toUpperCase();
+  if (v && coInitOk(v)) return v;
+  const got = prompt(label, '');
+  if (got === null) return null;
+  v = got.trim().toUpperCase();
+  if (!v) return null;
+  if (!coInitOk(v)) { toast('Initials must be 2–3 letters.'); return null; }
+  tr.navProg[field] = v;
+  return v;
+}
+
+function navProgSetAll(tr) {
+  ensureNavProg(tr);
+  const pending = [];
+  for (const g of NAV_GROUPS) for (const it of g.items) if (!navItem(tr, it).date) pending.push(it);
+  if (!pending.length) { toast('The Navigator Program is already complete.'); return; }
+  const nh = navAskInitials(tr, 'newHire', 'New hire initials for the whole program?');
+  if (nh === null) return;
+  const nav = navAskInitials(tr, 'navigatorInitials', 'Navigator initials for the whole program?');
+  if (nav === null) return;
+  for (const it of pending) {
+    const s = tr.navProg.items[it];
+    s.date = todayISO();
+    s.nh = nh;
+    s.nav = nav;
+  }
+  if (!tr.navProg.startDate) tr.navProg.startDate = tr.hireDate || todayISO();
+  stampRecord(tr, 'TRN');
+  persist(TRAIN_DB, TRAIN_KEY, trainees);
+  renderTraineeDetail();
+  toast(pending.length + ' item(s) completed — the Navigator Program is done.');
+}
+
+// The blank packet is served from the app folder, so it works offline too.
+function openNavigatorPacket() {
+  window.open('navigator-packet.pdf', '_blank');
 }
 
 function refreshCo(input) {
@@ -3286,6 +3519,7 @@ function trainPrintHtml(list) {
       processPrintBlock(tr) +
       checkoffPrintBlock(tr) +
       signoffFooterHtml(tr) +
+      '<section style="page-break-before:always">' + navProgPrintBlock(tr) + '</section>' +
       '</section>';
   }).join('');
 
@@ -3382,6 +3616,45 @@ function checkoffPrintBlock(tr) {
   }).join('');
   const afAudit = auditFootnote(tr, 'New Hire Training Record');
   return banner + '<h3>' + esc(tr.name) + ' — ' + done + '/' + CHECKOFF_TOTAL + ' signed</h3>' + groups + (afAudit ? '<div class="audit-line">' + esc(afAudit) + '</div>' : '');
+}
+
+/* The Navigator Program prints on its OWN page (page-break-before) so HR
+   receives the completed Navigator portion as a separate sheet, apart from the
+   driver/trainer check-off. Blank rows print when nothing is filled in yet. */
+function navProgPrintBlock(tr) {
+  ensureNavProg(tr);
+  const n = tr.navProg;
+  const done = navCount(tr);
+  const pend = NAV_TOTAL - done;
+  const banner = pend > 0
+    ? '<div class="pdf-pending">PENDING — ' + pend + ' of ' + NAV_TOTAL + ' Navigator Program items still awaiting initials.</div>'
+    : '<div class="pdf-complete">Navigator Program complete — all ' + NAV_TOTAL + ' items initialled by both sides.</div>';
+  const rows = (g) => g.items.map((it) => {
+    const s = navItem(tr, it);
+    return '<tr><td>' + esc(it) + '</td><td>' + esc(coInitOk(s.nh) ? s.nh.toUpperCase() : '') + '</td><td>' + esc(coInitOk(s.nav) ? s.nav.toUpperCase() : '') + '</td><td>' + esc(s.date) + '</td></tr>';
+  }).join('');
+  const groups = NAV_GROUPS.map((g) => {
+    const gdone = g.items.filter((it) => navDone(navItem(tr, it))).length;
+    return '<h4>' + esc(g.name) + ' (' + gdone + '/' + g.items.length + ')</h4>' +
+      '<table><tr><th>Item</th><th>New Hire Initials</th><th>Navigator Initials</th><th>Date</th></tr>' + rows(g) + '</table>';
+  }).join('');
+  const values = '<h4>U.S. Venture\'s Values (walked through together)</h4><table>' +
+    NAV_VALUES.map(([t, d]) => '<tr><td style="width:26%"><strong>' + esc(t) + '</strong></td><td>' + esc(d) + '</td></tr>').join('') +
+    '</table>';
+  const meta = '<p style="margin:0 0 8px;font-size:11px;color:#555">Navigator: ' + esc(n.navigator || '—') +
+    ' · New Hire: ' + esc(n.newHire || tr.name || '—') +
+    ' · Department: ' + esc(n.department || '—') +
+    ' · 90-day start: ' + esc(n.startDate || tr.hireDate || '—') + '</p>';
+  const sigs = '<div class="foot">' +
+    '<div class="sig"><div>New Hire Signature</div></div>' +
+    '<div class="sig"><div>Navigator Signature</div></div>' +
+    '<div class="sig"><div>Operations Leader Signature</div></div>' +
+    '<div class="sig"><div>Date</div></div>' +
+    '</div>' +
+    '<p style="margin:14px 0 0;font-size:11px;color:#555">Once complete, please sign below and submit to your HR Business Partner.</p>';
+  const afAudit = auditFootnote(tr, 'Navigator Program');
+  return '<h3>' + esc(tr.name) + ' — Navigator Program (' + done + '/' + NAV_TOTAL + ')</h3>' +
+    meta + banner + groups + values + sigs + (afAudit ? '<div class="audit-line">' + esc(afAudit) + '</div>' : '');
 }
 
 function signoffFooterHtml(tr) {

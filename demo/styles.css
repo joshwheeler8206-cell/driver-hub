@@ -602,6 +602,17 @@ input.invalid, select.invalid, textarea.invalid { border-color: #dc2626 !importa
 .co-row.done .co-input { border-color: #86efac; background: #f0fdf4; }
 .co-actions { padding: 8px 14px; border-top: 1px solid var(--line); }
 
+/* ---------- Navigator Program (90-day onboarding) ---------- */
+/* Reuses the check-off table so both sides initial in the same layout; only the
+   header wording differs ("New Hire Initials" / "Navigator Initials"). */
+.navp .co-count { color: var(--accent); background: #dbeafe; }
+.navp .co-row.done .co-item { color: var(--green); font-weight: 600; }
+.navp-values { margin: 12px 0 4px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; background: #f8fafc; }
+.navp-values summary { cursor: pointer; font-size: 13px; font-weight: 700; color: var(--ink); }
+.navp-value { margin-top: 10px; }
+.navp-value-t { font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; color: var(--muted); }
+.navp-value-d { font-size: 12.5px; color: var(--ink); margin-top: 2px; }
+
 /* ---------- Certs ---------- */
 .summary { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
 .stat {
