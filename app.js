@@ -724,7 +724,7 @@ function renderHome() {
     num.textContent = String(ns.locations);
     const parts = [
       ns.locations + (ns.locations === 1 ? ' location' : ' locations'),
-      ns.confirmed + ' of ' + (ns.locations * NAV_PROGRAMS) + ' benefit values confirmed',
+      ns.confirmed + ' of ' + (ns.locations * (ns.programs || NAV_PROGRAMS)) + ' benefit values confirmed',
     ];
     if (ns.openQuestions) parts.push(ns.openQuestions + ' HR question' + (ns.openQuestions === 1 ? '' : 's') + ' open');
     sub.textContent = parts.join(' · ');
@@ -1036,7 +1036,9 @@ async function navHubStats() {
   let confirmed = 0;
   for (const k in vals) if (vals[k] && vals[k].status === 'confirmed') confirmed++;
   const openQuestions = (st.questions || []).filter((q) => q && !q.answered).length;
-  return { locations: st.locations.length, confirmed, openQuestions };
+  // the Navigator Hub persists its own program count — never drift from it
+  const programs = Number(st.programs) > 0 ? Number(st.programs) : NAV_PROGRAMS;
+  return { locations: st.locations.length, confirmed, openQuestions, programs };
 }
 
 function openNavigatorHub() {
