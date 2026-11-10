@@ -37,6 +37,13 @@
     return;
   }
 
+  if (tab === 'fleet') {
+    var fv = setInterval(function () {
+      if (typeof renderFleetView === 'function' && typeof fleet !== 'undefined' && fleet.length) { renderFleetView(); clearInterval(fv); }
+    }, 250);
+    return;
+  }
+
   if (tab) {
     var tries = 0;
     var iv = setInterval(function () {

@@ -100,11 +100,8 @@ const ROUTES_DB = 'usaf_route_notes_db';
 const ROUTES_KEY = 'usaf_route_notes_v1';
 const ROSTER_DB = 'usaf_roster_db';
 const ROSTER_KEY = 'usaf_roster_v1';
-// Navigator Hub lives in its own app but on the same origin, so its store is readable here.
-const NAV_DB = 'usaf_navigator_db';
-const NAV_KEY = 'usaf_navigator_v1';
-const NAV_URL = 'https://joshwheeler8206-cell.github.io/navigator-hub/';
-const NAV_PROGRAMS = 7;
+const FLEET_DB = 'usaf_fleet_db';
+const FLEET_KEY = 'usaf_fleet_v1';
 
 const canIdb = typeof indexedDB !== 'undefined';
 const _dbCache = {};
@@ -168,6 +165,7 @@ let drivers = [];
 let paceEvals = [];
 let routes = [];
 let roster = [];
+let fleet = [];
 
 async function initStorage() {
   if (!canIdb) {
@@ -177,6 +175,7 @@ async function initStorage() {
     paceEvals = JSON.parse(localStorage.getItem(PACE_DB + ':' + PACE_KEY) || '[]') || [];
     routes = JSON.parse(localStorage.getItem(ROUTES_DB + ':' + ROUTES_KEY) || '[]') || [];
     roster = JSON.parse(localStorage.getItem(ROSTER_DB + ':' + ROSTER_KEY) || '[]') || [];
+    fleet = JSON.parse(localStorage.getItem(FLEET_DB + ':' + FLEET_KEY) || '[]') || [];
     stampLoaded();
     return;
   }
@@ -187,6 +186,7 @@ async function initStorage() {
   paceEvals = (await idbGet(PACE_DB, PACE_KEY)) || [];
   routes = (await idbGet(ROUTES_DB, ROUTES_KEY)) || [];
   roster = (await idbGet(ROSTER_DB, ROSTER_KEY)) || [];
+  fleet = (await idbGet(FLEET_DB, FLEET_KEY)) || [];
   // migrate from legacy localStorage of the standalone apps
   try {
     const legacyE = JSON.parse(localStorage.getItem(EVALS_KEY));
@@ -672,7 +672,7 @@ function renderHome() {
 
   const latestRoute = routes.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
 
-  if (!evals.length && !trainees.length && !drivers.length) {
+  if (!evals.length && !trainees.length && !drivers.length && !fleet.length) {
     view.appendChild(el('div', { class: 'empty' }, [
       el('div', { class: 'big' }, ['🚚']),
       el('div', { class: 'title' }, ['Welcome to the Driver Hub']),
@@ -682,7 +682,6 @@ function renderHome() {
     renderAttentionInbox(view);
   }
 
-  const navCard = dashCard('🧭', 'Navigator Hub', '—', 'Checking…', () => openNavigatorHub());
   const grid = el('div', { class: 'dash-grid' }, [
     dashCard('👤', 'Drivers', String(roster.length),
       roster.length ? roster.length + ' profile(s) · autofills all apps' : 'No roster yet',
@@ -693,7 +692,6 @@ function renderHome() {
     dashCard('⏱️', 'PACE Drives', String(paceEvals.length),
       latestPace ? 'Last: ' + (latestPace.evaluator || '—') + ' · ' + latestPace.date + (pacesDue ? ' · ' + pacesDue + ' due' : '') : 'No PACE evals yet',
       () => switchTab('pace')),
-    navCard,
     dashCard('📋', 'Driver Reviews', String(evals.length),
       latestEval ? 'Last: ' + latestEval.driverName + ' · ' + latestEval.evalDate : 'No reviews yet',
       () => switchTab('review')),
@@ -709,26 +707,12 @@ function renderHome() {
     dashCard('🎉', 'Anniversaries', String(anniversariesUpcoming().length),
       anniversariesUpcoming().length ? anniversariesUpcoming().map((a) => a.name).join(', ') : 'None in next 60 days',
       () => renderRosterView()),
+    dashCard('🚛', 'Fleet', String(fleet.length),
+      fleet.length ? (fleet.filter(fleetOutOfService).length ? fleet.filter(fleetOutOfService).length + ' OUT OF SERVICE' : 'All units cleared') + ' · inspection / reg / ins / service' : 'No units yet',
+      () => renderFleetView()),
   ]);
   view.appendChild(grid);
 
-  navHubStats().then((ns) => {
-    const num = navCard.querySelector('.dash-num');
-    const sub = navCard.querySelector('.dash-sub');
-    if (!num || !sub) return;
-    if (!ns) {
-      num.textContent = '0';
-      sub.textContent = 'Open to set up locations & benefit values';
-      return;
-    }
-    num.textContent = String(ns.locations);
-    const parts = [
-      ns.locations + (ns.locations === 1 ? ' location' : ' locations'),
-      ns.confirmed + ' of ' + (ns.locations * (ns.programs || NAV_PROGRAMS)) + ' benefit values confirmed',
-    ];
-    if (ns.openQuestions) parts.push(ns.openQuestions + ' HR question' + (ns.openQuestions === 1 ? '' : 's') + ' open');
-    sub.textContent = parts.join(' · ');
-  }).catch(() => {});
 
   // Quick actions
   view.appendChild(el('div', { class: 'card' }, [
@@ -737,11 +721,11 @@ function renderHome() {
       el('button', { class: 'btn primary', onclick: () => renderRosterView() }, ['+ Driver Profile']),
       el('button', { class: 'btn', onclick: () => { switchTab('review'); startNewReview(); } }, ['+ New Review']),
       el('button', { class: 'btn', onclick: () => { switchTab('pace'); startNewPace(); } }, ['+ PACE Drive']),
+      el('button', { class: 'btn', onclick: () => renderFleetView() }, ['+ Fleet Unit']),
     ]),
     el('div', { class: 'actions', style: 'margin-top:8px' }, [
       el('button', { class: 'btn', onclick: () => { switchTab('training'); addTrainee(); } }, ['+ Add Trainee']),
       el('button', { class: 'btn', onclick: () => { switchTab('certs'); addDriver(); } }, ['+ Add Driver Cert']),
-      el('button', { class: 'btn', onclick: () => openNavigatorHub() }, ['🧭 Navigator Hub']),
       el('button', { class: 'btn', onclick: () => { state.routes.sub = 'new'; switchTab('routes'); } }, ['+ New Route']),
     ]),
   ]));
@@ -763,6 +747,7 @@ function renderHome() {
       el('button', { class: 'btn small', onclick: () => exportTrainCsv() }, ['Training CSV']),
       el('button', { class: 'btn small', onclick: () => exportPaceCsv() }, ['PACE CSV']),
       el('button', { class: 'btn small', onclick: () => exportRoutesCsv() }, ['Routes CSV']),
+      el('button', { class: 'btn small', onclick: () => exportFleetCsv() }, ['Fleet CSV']),
     ]),
   ]));
 
@@ -951,8 +936,307 @@ function exportRoster() {
   download('driver-roster-' + todayISO() + '.json', JSON.stringify(roster, null, 2));
 }
 
+/* ============================== Fleet Roster ============================== */
+// One record per truck/unit in usaf_fleet_db / usaf_fleet_v1. Works like the
+// driver roster (type a unit # and it pulls the unit up) and like the Cert
+// Tracker (each date gets an OK / WARNING / CRITICAL / EXPIRED status).
+// A unit with ANY expired date — or a date that was never entered — is
+// OUT OF SERVICE: flagged red here and in Needs Attention until it's fixed.
+// Fields: { id, unit, plate, vin, year, make, warehouse, notes,
+//           lastInspection, regExp, insExp, serviceDue, serviceMiles }.
+const FLEET_ITEMS = [
+  { prop: 'lastInspection', label: 'Annual Federal (DOT) Inspection', input: 'Last Annual Federal Inspection', short: 'Annual inspection', annual: true },
+  { prop: 'regExp', label: 'Registration', input: 'Registration Expires', short: 'Registration' },
+  { prop: 'insExp', label: 'Insurance', input: 'Insurance Expires', short: 'Insurance' },
+  // Preventive-maintenance service: flagged when due/overdue, but a late service
+  // alone does not ground the truck (blocks:false) the way an expired legal date does.
+  { prop: 'serviceDue', label: 'Next Service (PM)', input: 'Next Service Due', short: 'Service', due: true, blocks: false },
+];
+
+function fleetKey(unit) { return String(unit || '').trim().toLowerCase(); }
+function fleetFind(unit) { const k = fleetKey(unit); return k ? (fleet.find((u) => fleetKey(u.unit) === k) || null) : null; }
+
+// The annual inspection is entered as the date it was DONE; it is due one year later.
+function addOneYear(iso) {
+  const p = splitISO(iso);
+  if (!p.y) return '';
+  const last = new Date(p.y + 1, p.m, 0).getDate();   // Feb 29 -> Feb 28
+  return joinISO(p.y + 1, p.m, Math.min(p.d, last));
+}
+
+function fleetDue(u, it) {
+  const v = String(u[it.prop] || '').trim();
+  return it.annual ? addOneYear(v) : v;
+}
+
+// [{ item, due, status, text }] for the three tracked dates.
+function fleetChecks(u) {
+  return FLEET_ITEMS.map((it) => {
+    const due = fleetDue(u, it);
+    const c = { expiry: due };
+    const status = certStatus(c);
+    let text;
+    const isDue = it.annual || it.due;
+    if (!due) text = it.annual ? 'no inspection date on file' : it.due ? 'no service date set' : 'no date on file';
+    else {
+      const d = certDaysLeft(c);
+      const word = isDue ? 'due' : 'expires';
+      text = d < 0 ? (isDue ? 'OVERDUE ' : 'EXPIRED ') + Math.abs(d) + ' day(s) ago (' + fmtDate(due) + ')'
+        : d === 0 ? word + ' TODAY' : word + ' ' + fmtDate(due) + ' · ' + d + ' day(s) left';
+    }
+    if (it.due && u.serviceMiles) text += ' · or at ' + u.serviceMiles + ' mi';
+    return { item: it, due, status, text };
+  });
+}
+
+// Out of service = something expired or never entered. Reasons are spelled out.
+function fleetProblems(u) {
+  return fleetChecks(u).filter((c) => c.item.blocks !== false && (c.status === 'expired' || c.status === 'unknown'));
+}
+// Service that is past due (doesn't ground the unit, but is flagged red).
+function fleetServiceOverdue(u) { return fleetChecks(u).filter((c) => c.item.blocks === false && c.status === 'expired'); }
+function fleetOutOfService(u) { return fleetProblems(u).length > 0; }
+function fleetDueSoon(u) { return fleetChecks(u).filter((c) => c.status === 'critical' || c.status === 'warning'); }
+
+function fleetSave() { persist(FLEET_DB, FLEET_KEY, fleet); }
+
+function ensureFleetDatalist() {
+  let dl = document.getElementById('fleet-units');
+  if (!dl) { dl = el('datalist', { id: 'fleet-units' }); document.body.appendChild(dl); }
+  dl.innerHTML = '';
+  for (const u of fleetSorted()) dl.appendChild(el('option', { value: u.unit }));
+  return dl;
+}
+
+function fleetSorted() {
+  return [...fleet].sort((a, b) => {
+    const oa = fleetOutOfService(a) ? 0 : 1, ob = fleetOutOfService(b) ? 0 : 1;
+    if (oa !== ob) return oa - ob;
+    return String(a.unit || '').localeCompare(String(b.unit || ''), undefined, { numeric: true });
+  });
+}
+
+function fleetBanner(u) {
+  const probs = fleetProblems(u);
+  if (probs.length) {
+    return el('div', { class: 'fl-banner no' }, [
+      el('b', {}, ['🚫 OUT OF SERVICE — do not put Unit ' + u.unit + ' on the road until fixed.']),
+      el('span', {}, [probs.map((c) => c.item.short + ': ' + c.text).join(' · ')]),
+    ]);
+  }
+  const late = fleetServiceOverdue(u);
+  const soon = fleetDueSoon(u);
+  if (late.length) {
+    return el('div', { class: 'fl-banner soon' }, [
+      el('b', {}, ['🔧 Cleared to drive — SERVICE OVERDUE, schedule it now']),
+      el('span', {}, [late.concat(soon).map((c) => c.item.short + ' ' + c.text).join(' · ')]),
+    ]);
+  }
+  if (soon.length) {
+    return el('div', { class: 'fl-banner soon' }, [
+      el('b', {}, ['⚠️ Cleared to drive — renew soon']),
+      el('span', {}, [soon.map((c) => c.item.short + ' ' + c.text).join(' · ')]),
+    ]);
+  }
+  return el('div', { class: 'fl-banner ok' }, [el('b', {}, ['✅ Cleared to drive — inspection, registration, insurance and service all current.'])]);
+}
+
+function fleetStatusRow(c) {
+  const m = CERT_STATUS_META[c.status];
+  return el('div', { class: 'fl-check' }, [
+    el('span', { class: 'fl-check-l' }, [c.item.label]),
+    el('span', { class: 'roster-cert-status ' + m.cls }, [c.status === 'expired' ? c.text : (c.status === 'unknown' ? (c.item.blocks === false ? 'NOT SET' : 'MISSING') : m.label) + ' · ' + c.text]),
+  ]);
+}
+
+function renderFleetView(focusUnit) {
+  setAccent('#c2410c');
+  homeSubview = 'fleet';
+  const view = document.getElementById('view');
+  view.innerHTML = '';
+  ensureFleetDatalist();
+  view.appendChild(el('div', { class: 'route-head' }, [
+    el('button', { class: 'btn ghost small', onclick: () => renderHome() }, ['← Home']),
+    el('div', { class: 'actions', style: 'margin:0' }, [
+      el('button', { class: 'btn ghost small', onclick: () => exportFleetCsv() }, ['CSV']),
+      el('button', { class: 'btn ghost small', onclick: () => exportFleet() }, ['Backup']),
+    ]),
+  ]));
+
+  const oos = fleet.filter(fleetOutOfService).length;
+  const soon = fleet.filter((u) => !fleetOutOfService(u) && (fleetDueSoon(u).length || fleetServiceOverdue(u).length)).length;
+  view.appendChild(el('div', { class: 'card' }, [
+    el('h2', { class: 'card-title' }, ['🚛 Fleet Roster']),
+    el('p', { class: 'sub', style: 'margin:0 0 8px' }, ['Type a unit number to pull it up. Each unit tracks its last annual federal inspection (due one year later), registration, insurance and next service. An expired or missing inspection, registration or insurance puts the unit OUT OF SERVICE until it is fixed; an overdue service is flagged so it gets scheduled.']),
+    el('div', { class: 'fl-stats' }, [
+      el('div', { class: 'fl-stat' }, [el('strong', {}, [String(fleet.length)]), 'units']),
+      el('div', { class: 'fl-stat bad' }, [el('strong', {}, [String(oos)]), 'out of service']),
+      el('div', { class: 'fl-stat warn' }, [el('strong', {}, [String(soon)]), 'due soon / service late']),
+    ]),
+    el('div', { class: 'field' }, [
+      el('span', { class: 'field-label' }, ['Unit Number']),
+      el('input', { id: 'fleetUnit', list: 'fleet-units', autocomplete: 'off', placeholder: 'e.g. 412', inputmode: 'text', oninput: () => fleetLookup(), onchange: () => fleetLookup() }),
+    ]),
+    el('div', { id: 'fleetLookup' }),
+  ]));
+
+  if (fleet.length) {
+    view.appendChild(el('h2', { class: 'page-title', style: 'margin:14px 0 10px' }, ['Units (' + fleet.length + ')']));
+    view.appendChild(el('div', { id: 'fleetList' }, fleetSorted().map((u) => fleetCard(u))));
+  } else {
+    view.appendChild(el('div', { class: 'empty' }, ['No units yet. Type a unit number above to add the first one.']));
+  }
+  fleetLookup();
+  if (focusUnit) {
+    const n = document.getElementById('fleet-' + fleetKey(focusUnit).replace(/[^a-z0-9_-]/g, '_'));
+    if (n && n.scrollIntoView) n.scrollIntoView({ block: 'start' });
+  }
+}
+
+// Existing unit -> show where it stands and jump to it. New unit -> add form.
+function fleetLookup() {
+  const box = document.getElementById('fleetLookup');
+  const inp = document.getElementById('fleetUnit');
+  if (!box || !inp) return;
+  box.innerHTML = '';
+  const unit = inp.value.trim();
+  if (!unit) return;
+  const u = fleetFind(unit);
+  if (u) {
+    box.appendChild(el('div', { class: 'fl-found' }, [
+      el('div', { class: 'fl-found-h' }, ['Unit ' + u.unit + (u.make || u.year ? ' · ' + [u.year, u.make].filter(Boolean).join(' ') : '') + (u.warehouse ? ' · ' + u.warehouse : '')]),
+      fleetBanner(u),
+      ...fleetChecks(u).map(fleetStatusRow),
+      el('div', { class: 'actions', style: 'margin-top:8px' }, [
+        el('button', { class: 'btn primary', onclick: () => renderFleetView(u.unit) }, ['Edit Unit ' + u.unit + ' ›']),
+      ]),
+    ]));
+    return;
+  }
+  box.appendChild(el('div', { class: 'fl-new' }, [
+    el('p', { class: 'sub', style: 'margin:4px 0 8px' }, ['New unit — fill in what you have and add it.']),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Plate #']), el('input', { id: 'fleetPlate', placeholder: 'e.g. IA ABC123' })]),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Year / Make / Model']), el('input', { id: 'fleetMake', placeholder: 'e.g. 2021 Freightliner M2' })]),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['VIN']), el('input', { id: 'fleetVin', placeholder: '17 characters' })]),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Warehouse / Location']), el('input', { id: 'fleetWarehouse', placeholder: 'e.g. West Branch' })]),
+    ...FLEET_ITEMS.map((it) => dateField(it.input, 'fleet_' + it.prop, '')),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Service Due at Mileage (optional)']), el('input', { id: 'fleetServiceMiles', placeholder: 'e.g. 125,000', inputmode: 'numeric' })]),
+    el('div', { class: 'actions' }, [el('button', { class: 'btn primary big', onclick: () => addFleetUnit() }, ['+ Add Unit ' + unit])]),
+  ]));
+}
+
+function addFleetUnit() {
+  const unit = (document.getElementById('fleetUnit').value || '').trim();
+  if (!unit) { toast('Enter a unit number.'); return; }
+  if (fleetFind(unit)) { toast('Unit ' + unit + ' is already on the fleet roster.'); return; }
+  const val = (id) => { const n = document.getElementById(id); return n ? String(n.value || '').trim() : ''; };
+  const u = {
+    id: uid(), unit, plate: val('fleetPlate'), make: val('fleetMake'), vin: val('fleetVin').toUpperCase(),
+    warehouse: val('fleetWarehouse'), serviceMiles: val('fleetServiceMiles'), notes: '',
+    createdAt: new Date().toISOString(),
+  };
+  for (const it of FLEET_ITEMS) u[it.prop] = val('fleet_' + it.prop);
+  fleet.push(u);
+  fleetSave();
+  renderFleetView(u.unit);
+  toast(fleetOutOfService(u) ? 'Added Unit ' + unit + ' — OUT OF SERVICE until every date is current.' : 'Added Unit ' + unit + ' — cleared to drive.');
+}
+
+function fleetCard(u) {
+  const banner = el('div', {}, [fleetBanner(u)]);
+  const rows = el('div', {}, fleetChecks(u).map(fleetStatusRow));
+  const repaint = () => {
+    banner.innerHTML = ''; banner.appendChild(fleetBanner(u));
+    rows.innerHTML = ''; for (const c of fleetChecks(u)) rows.appendChild(fleetStatusRow(c));
+    card.className = 'card fl-card' + (fleetOutOfService(u) ? ' oos' : '');
+  };
+  const touch = () => { u.updatedAt = new Date().toISOString(); fleetSave(); };
+  const text = (prop, label, ph) => el('div', { class: 'field' }, [
+    el('span', { class: 'field-label' }, [label]),
+    el('input', { type: 'text', value: u[prop] || '', placeholder: ph || '', oninput: (e) => { u[prop] = e.target.value; touch(); } }),
+  ]);
+  const unitInput = el('input', {
+    type: 'text', value: u.unit || '',
+    onchange: (e) => {
+      const nu = e.target.value.trim();
+      const other = fleetFind(nu);
+      if (!nu || (other && other !== u)) { toast(nu ? 'Unit ' + nu + ' already exists.' : 'Unit number cannot be blank.'); e.target.value = u.unit; return; }
+      u.unit = nu; touch(); ensureFleetDatalist();
+    },
+  });
+  const card = el('div', { class: 'card fl-card' + (fleetOutOfService(u) ? ' oos' : ''), id: 'fleet-' + fleetKey(u.unit).replace(/[^a-z0-9_-]/g, '_') }, [
+    el('h3', { class: 'fl-unit' }, ['Unit ' + u.unit]),
+    banner,
+    rows,
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Unit Number']), unitInput]),
+    ...FLEET_ITEMS.map((it) => el('div', { class: 'field' }, [
+      el('span', { class: 'field-label' }, [it.input]),
+      dateSelects(u[it.prop] || '', (iso) => { if (!iso) return; u[it.prop] = iso; touch(); repaint(); }),
+    ])),
+    el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Service Due at Mileage (optional)']),
+      el('input', { type: 'text', value: u.serviceMiles || '', placeholder: 'e.g. 125,000', inputmode: 'numeric', oninput: (e) => { u.serviceMiles = e.target.value; touch(); repaint(); } })]),
+    text('plate', 'Plate #', 'e.g. IA ABC123'),
+    text('make', 'Year / Make / Model', 'e.g. 2021 Freightliner M2'),
+    text('vin', 'VIN', '17 characters'),
+    text('warehouse', 'Warehouse / Location', 'e.g. West Branch'),
+    text('notes', 'Notes', 'Shop, permits, IFTA, etc.'),
+    el('div', { class: 'actions' }, [el('button', { class: 'btn ghost small danger', onclick: () => deleteFleetUnit(u) }, ['Delete unit'])]),
+  ]);
+  return card;
+}
+
+function deleteFleetUnit(u) {
+  if (!confirm('Remove Unit ' + u.unit + ' from the fleet roster?')) return;
+  fleet = fleet.filter((x) => x !== u);
+  fleetSave();
+  renderFleetView();
+}
+
+function exportFleet() {
+  if (!fleet.length) { toast('Fleet roster is empty.'); return; }
+  download('fleet-roster-' + todayISO() + '.json', JSON.stringify(fleet, null, 2));
+}
+
+function exportFleetCsv() {
+  if (!fleet.length) { toast('Fleet roster is empty.'); return; }
+  const rows = [['Unit', 'Plate', 'Year/Make/Model', 'VIN', 'Warehouse', 'Last Annual Inspection', 'Inspection Due', 'Registration Expires', 'Insurance Expires', 'Next Service Due', 'Service Due Miles', 'Status', 'Problems', 'Notes']];
+  for (const u of fleetSorted()) {
+    const ch = fleetChecks(u);
+    rows.push([u.unit, u.plate, u.make, u.vin, u.warehouse, u.lastInspection, ch[0].due, u.regExp, u.insExp, u.serviceDue, u.serviceMiles,
+      fleetOutOfService(u) ? 'OUT OF SERVICE' : fleetServiceOverdue(u).length ? 'SERVICE OVERDUE' : fleetDueSoon(u).length ? 'DUE SOON' : 'OK',
+      fleetProblems(u).concat(fleetServiceOverdue(u)).map((c) => c.item.short + ': ' + c.text).join('; '), u.notes]);
+  }
+  downloadCsv('fleet-roster-' + todayISO() + '.csv', rows);
+}
+
 function renderAttentionInbox(view) {
   const items = [];
+
+  for (const u of fleetSorted()) {
+    const probs = fleetProblems(u);
+    if (probs.length) {
+      items.push({
+        icon: '🚫', title: 'Unit ' + u.unit + ' — OUT OF SERVICE, do not put on the road',
+        sub: probs.map((c) => c.item.short + ': ' + c.text).join(' · '),
+        cls: 'danger', go: () => renderFleetView(u.unit),
+      });
+      continue;
+    }
+    for (const c of fleetServiceOverdue(u)) {
+      items.push({
+        icon: '🔧', title: 'Unit ' + u.unit + ' — SERVICE OVERDUE',
+        sub: c.text + ' · schedule it before it becomes a breakdown',
+        cls: 'danger', go: () => renderFleetView(u.unit),
+      });
+    }
+    for (const c of fleetDueSoon(u)) {
+      items.push({
+        icon: c.item.due ? '🔧' : '🚛', title: 'Unit ' + u.unit + ' — ' + c.item.short + (c.item.annual || c.item.due ? ' due soon' : ' expiring'),
+        sub: CERT_STATUS_META[c.status].label + ' · ' + c.text,
+        cls: c.status === 'critical' ? 'warn' : 'mild', go: () => renderFleetView(u.unit),
+      });
+    }
+  }
 
   const allCerts = [];
   for (const d of drivers) for (const c of d.certs) allCerts.push({ driver: d, cert: c });
@@ -1013,7 +1297,7 @@ function renderAttentionInbox(view) {
   if (!items.length) {
     view.appendChild(el('div', { class: 'card' }, [
       el('h2', { class: 'card-title' }, ['Needs Attention']),
-      el('div', { class: 'sc-clean' }, ['All clear — no expiring certs, overdue PACE drives, or incomplete training.']),
+      el('div', { class: 'sc-clean' }, ['All clear — no expiring certs, out-of-service trucks, overdue PACE drives, or incomplete training.']),
     ]));
     return;
   }
@@ -1027,24 +1311,6 @@ function renderAttentionInbox(view) {
     ]));
   }
   view.appendChild(list);
-}
-
-async function navHubStats() {
-  const st = await idbGet(NAV_DB, NAV_KEY);
-  if (!st || !Array.isArray(st.locations)) return null;
-  const vals = st.values || {};
-  let confirmed = 0;
-  for (const k in vals) if (vals[k] && vals[k].status === 'confirmed') confirmed++;
-  const openQuestions = (st.questions || []).filter((q) => q && !q.answered).length;
-  // the Navigator Hub persists its own program count — never drift from it
-  const programs = Number(st.programs) > 0 ? Number(st.programs) : NAV_PROGRAMS;
-  return { locations: st.locations.length, confirmed, openQuestions, programs };
-}
-
-function openNavigatorHub() {
-  let w = null;
-  try { w = window.open(NAV_URL, '_blank', 'noopener'); } catch (e) { w = null; }
-  if (!w) location.href = NAV_URL;
 }
 
 function dashCard(icon, title, num, sub, onclick) {
@@ -1068,11 +1334,13 @@ const ALL_STORES = [
   { field: 'paceEvals', label: 'PACE Evaluations',    db: PACE_DB,   key: PACE_KEY,   get: () => paceEvals, set: (v) => { paceEvals = v; } },
   { field: 'routes',    label: 'Route Notes',         db: ROUTES_DB, key: ROUTES_KEY, get: () => routes,    set: (v) => { routes = v; } },
   { field: 'roster',    label: 'Driver Roster',       db: ROSTER_DB, key: ROSTER_KEY, get: () => roster,    set: (v) => { roster = v; } },
+  { field: 'fleet',     label: 'Fleet Roster',        db: FLEET_DB,  key: FLEET_KEY,  get: () => fleet,     set: (v) => { fleet = v; } },
 ];
 
 // Records are matched on id where they have one; the roster is matched on name.
 function recordKey(field, rec) {
   if (field === 'roster') return String((rec && rec.name) || '').trim().toLowerCase();
+  if (field === 'fleet') return fleetKey(rec && rec.unit);
   return (rec && rec.id) || '';
 }
 
@@ -1088,7 +1356,7 @@ function backupPayload() {
     stores,
     // Flat duplicates kept so older v1 backups still import cleanly.
     evals: stores.evals, trainees: stores.trainees, drivers: stores.drivers,
-    paceEvals: stores.paceEvals, routes: stores.routes, roster: stores.roster,
+    paceEvals: stores.paceEvals, routes: stores.routes, roster: stores.roster, fleet: stores.fleet,
   };
 }
 
@@ -1201,7 +1469,15 @@ function sanitizeImport(field, arr) {
   for (const r of arr) {
     if (!r || typeof r !== 'object' || Array.isArray(r)) continue;
     const c = { ...r };
-    if (field !== 'roster') {
+    if (field === 'fleet') {
+      // Units are matched by unit number; a unit with none can't be looked up.
+      c.unit = String(c.unit == null ? '' : c.unit).trim();
+      if (!c.unit) continue;
+      if (!c.id) c.id = uid();
+      for (const k of ['plate', 'make', 'vin', 'warehouse', 'notes', 'lastInspection', 'regExp', 'insExp', 'serviceDue', 'serviceMiles']) {
+        if (c[k] !== undefined && c[k] !== null && typeof c[k] !== 'string') c[k] = String(c[k]);
+      }
+    } else if (field !== 'roster') {
       if (c.id === undefined || c.id === null || c.id === '') c.id = uid();
     } else {
       // Roster rows are matched by name; a nameless row is unreachable and would
@@ -2342,8 +2618,9 @@ const CHECKOFF_TOTAL = CHECKOFF_GROUPS.reduce((n, g) => n + g.items.length, 0);
    Transcribed from the printed "Navigator Program Onboarding Packet" the new
    hire and their Navigator complete together over the 90-day introductory
    period. Every item is initialled by BOTH sides (new hire + Navigator) and
-   dated. It is its own document, so it prints on its own page — HR gets the
-   completed Navigator portion separately from the driver check-off. */
+   dated. The screen + print for it now live in the separate New Hire Navigator
+   app (~/new-hire-navigator/program/), which edits the same trainee records;
+   only the data shape is kept here so existing tr.navProg data is preserved. */
 const NAV_GROUPS = [
   { name: 'Building Strong Trusting Relationships', items: [
     'New Hire and Navigator have lunch together',
@@ -2385,15 +2662,6 @@ const NAV_GROUPS = [
 ];
 
 const NAV_TOTAL = NAV_GROUPS.reduce((n, g) => n + g.items.length, 0);
-
-// U.S. Venture's four differentiating values — walked through together on page 2
-// of the packet (kept as reference, no initials required).
-const NAV_VALUES = [
-  ['Caring Relationships', 'Fosters fun and friendships. Represent the company in a positive manner. Listens and communicates appropriately and effectively. Collaborates with and positively contributes to the team. Displays positive, professional behavior. Develops caring and professional relationships to ensure external and internal customer needs are met. Shows compassion and respect for others.'],
-  ['Entrepreneurial Spirit', 'Understands how your role supports the vision and strategy of the organization. Be aware of trends and information affecting the organization. Support and participate in process improvement activities. Adjust to new methods and procedures. Be a change-maker who identifies potential problems and develops and implements solutions.'],
-  ['Strategic Foresight', 'Broaden your perspective on the big picture of the company, policies, and procedures. Visualize the future and contribute with a proactive approach.'],
-  ['High Performance', 'Demonstrate initiative and ownership of work. Deliver high quality, accurate work. Your work is consistent, timely, thorough, and complete. Follow established policies and procedures. Work safely in all activities.'],
-];
 
 // Most groups are initialled by the trainer. The compliance review is signed off
 // by DOT Compliance Support instead, so its column and prompts say so.
@@ -2873,8 +3141,6 @@ function renderTraineeDetail() {
 
   view.appendChild(renderCheckoffCard(ensureCheckoffs(tr)));
 
-  view.appendChild(renderNavProgCard(tr));
-
   view.appendChild(renderSignoffCard(tr));
 
   view.appendChild(el('div', { class: 'card' }, [
@@ -2959,153 +3225,6 @@ function coTable(tr, g) {
 function saveCo(tr) {
   persist(TRAIN_DB, TRAIN_KEY, trainees);
 }
-function renderNavProgCard(tr) {
-  ensureNavProg(tr);
-  const n = tr.navProg;
-  const done = navCount(tr);
-  const card = el('div', { class: 'card navp' }, [
-    el('div', { class: 'section-head' }, [
-      el('h2', { class: 'card-title navp-sum' }, ['Navigator Program — 90-Day Onboarding (' + done + '/' + NAV_TOTAL + ')']),
-    ]),
-    el('p', { class: 'rsub' }, ['The Navigator Program packet is completed together over the new hire\'s 90-day introductory period. Each item takes BOTH sets of initials — the new hire and the Navigator — plus the date. It prints on its own sheet so HR receives the completed Navigator portion separately from the driver check-off.']),
-    el('label', { class: 'field' }, [
-      el('span', { class: 'field-label' }, ['Navigator']),
-      el('input', { type: 'text', class: 'co-init', id: 'navpNavigator', placeholder: 'Navigator name', value: n.navigator || '', oninput: (e) => { n.navigator = e.target.value; saveCo(tr); } }),
-    ]),
-    el('label', { class: 'field' }, [
-      el('span', { class: 'field-label' }, ['New Hire / Driver']),
-      el('input', { type: 'text', class: 'co-init', id: 'navpName', placeholder: 'New hire name', value: n.newHire || tr.name || '', oninput: (e) => { n.newHire = e.target.value; saveCo(tr); } }),
-    ]),
-    el('label', { class: 'field' }, [
-      el('span', { class: 'field-label' }, ['Department / Location']),
-      el('input', { type: 'text', class: 'co-init', id: 'navpDept', placeholder: 'Department or location', value: n.department || '', oninput: (e) => { n.department = e.target.value; saveCo(tr); } }),
-    ]),
-    el('label', { class: 'field' }, [
-      el('span', { class: 'field-label' }, ['90-Day Start Date']),
-      el('input', { type: 'date', id: 'navpStart', value: n.startDate || '', onchange: (e) => { n.startDate = e.target.value; saveCo(tr); } }),
-    ]),
-    ...NAV_GROUPS.map((g) => navProgGroup(tr, g)),
-    el('details', { class: 'navp-values' }, [
-      el('summary', {}, ['U.S. Venture\'s Values (reference — walked through together)']),
-      ...NAV_VALUES.map(([t, d]) => el('div', { class: 'navp-value' }, [
-        el('div', { class: 'navp-value-t' }, [t]),
-        el('div', { class: 'navp-value-d' }, [d]),
-      ])),
-    ]),
-    el('div', { class: 'btn-row' }, [
-      el('button', { class: 'btn primary', onclick: () => navProgSetAll(tr) }, ['Mark whole program complete']),
-      el('button', { class: 'btn ghost small', onclick: () => openNavigatorPacket() }, ['📄 Blank packet (PDF)']),
-    ]),
-  ]);
-  return card;
-}
-
-function navProgGroup(tr, g) {
-  const open = !!state.training.coOpen['nav:' + g.name];
-  const done = g.items.filter((it) => navDone(navItem(tr, it))).length;
-  return el('div', { class: 'co-group' }, [
-    el('button', { class: 'co-head' + (open ? ' open' : ''), onclick: () => toggleNavGroup(g.name) }, [
-      el('span', { class: 'co-title' }, [g.name]),
-      el('span', { class: 'co-count' }, [done + '/' + g.items.length]),
-      el('span', { class: 'rn-chevron' }, ['▾']),
-    ]),
-    ...(open ? [navProgTable(tr, g)] : []),
-  ]);
-}
-
-function toggleNavGroup(name) {
-  const k = 'nav:' + name;
-  if (state.training.coOpen[k]) delete state.training.coOpen[k];
-  else state.training.coOpen[k] = true;
-  renderTraineeDetail();
-}
-
-function navProgTable(tr, g) {
-  const wrap = el('div', { class: 'co-table' });
-  wrap.appendChild(el('div', { class: 'co-row co-th' }, [
-    el('div', { class: 'co-item' }, ['Item']),
-    coHeadCell('co-drv', 'New Hire Initials', 'New Hire'),
-    coHeadCell('co-tr', 'Navigator Initials', 'Navigator'),
-    el('div', { class: 'co-date' }, ['Date']),
-  ]));
-  for (const item of g.items) {
-    const s = navItem(tr, item);
-    const complete = navDone(s);
-    wrap.appendChild(el('div', { class: 'co-row' + (complete ? ' done' : '') }, [
-      el('div', { class: 'co-item' }, [item]),
-      el('div', { class: 'co-drv' }, [el('input', { type: 'text', class: 'co-input', maxlength: '3', placeholder: '·', value: s.nh || '', oninput: (e) => { const v = e.target.value.toUpperCase(); if (e.target.value !== v) e.target.value = v; s.nh = v; saveCo(tr); refreshCo(e.target); } })]),
-      el('div', { class: 'co-tr' }, [el('input', { type: 'text', class: 'co-input', maxlength: '3', placeholder: '·', value: s.nav || '', oninput: (e) => { const v = e.target.value.toUpperCase(); if (e.target.value !== v) e.target.value = v; s.nav = v; saveCo(tr); refreshCo(e.target); } })]),
-      el('div', { class: 'co-date' }, [el('input', { type: 'date', class: 'co-input', value: s.date || '', onchange: (e) => { s.date = e.target.value; saveCo(tr); refreshCo(e.target); } })]),
-    ]));
-  }
-  const pending = g.items.filter((it) => !navItem(tr, it).date);
-  wrap.appendChild(el('div', { class: 'co-actions' }, [
-    el('button', { class: 'btn ghost small', onclick: () => completeNavGroup(tr, g) }, ['Mark group complete' + (pending.length ? ' (' + pending.length + ')' : '')]),
-  ]));
-  return wrap;
-}
-
-// One tap fills a whole group: it asks once for the new hire's initials and the
-// Navigator's, then stamps today's date on every item still missing one.
-function completeNavGroup(tr, g) {
-  ensureNavProg(tr);
-  const pending = g.items.filter((it) => !navItem(tr, it).date);
-  if (!pending.length) { toast('This group is already completed.'); return; }
-  const nh = navAskInitials(tr, 'newHire', 'New hire initials for this group?');
-  if (nh === null) return;
-  const nav = navAskInitials(tr, 'navigatorInitials', 'Navigator initials for this group?');
-  if (nav === null) return;
-  for (const it of pending) {
-    const s = tr.navProg.items[it];
-    s.date = todayISO();
-    s.nh = nh;
-    s.nav = nav;
-  }
-  stampRecord(tr, 'TRN');
-  persist(TRAIN_DB, TRAIN_KEY, trainees);
-  renderTraineeDetail();
-  toast(pending.length + ' Navigator Program item(s) completed for ' + g.name + '.');
-}
-
-function navAskInitials(tr, field, label) {
-  let v = (tr.navProg[field] || '').toUpperCase();
-  if (v && coInitOk(v)) return v;
-  const got = prompt(label, '');
-  if (got === null) return null;
-  v = got.trim().toUpperCase();
-  if (!v) return null;
-  if (!coInitOk(v)) { toast('Initials must be 2–3 letters.'); return null; }
-  tr.navProg[field] = v;
-  return v;
-}
-
-function navProgSetAll(tr) {
-  ensureNavProg(tr);
-  const pending = [];
-  for (const g of NAV_GROUPS) for (const it of g.items) if (!navItem(tr, it).date) pending.push(it);
-  if (!pending.length) { toast('The Navigator Program is already complete.'); return; }
-  const nh = navAskInitials(tr, 'newHire', 'New hire initials for the whole program?');
-  if (nh === null) return;
-  const nav = navAskInitials(tr, 'navigatorInitials', 'Navigator initials for the whole program?');
-  if (nav === null) return;
-  for (const it of pending) {
-    const s = tr.navProg.items[it];
-    s.date = todayISO();
-    s.nh = nh;
-    s.nav = nav;
-  }
-  if (!tr.navProg.startDate) tr.navProg.startDate = tr.hireDate || todayISO();
-  stampRecord(tr, 'TRN');
-  persist(TRAIN_DB, TRAIN_KEY, trainees);
-  renderTraineeDetail();
-  toast(pending.length + ' item(s) completed — the Navigator Program is done.');
-}
-
-// The blank packet is served from the app folder, so it works offline too.
-function openNavigatorPacket() {
-  window.open('navigator-packet.pdf', '_blank');
-}
-
 function refreshCo(input) {
   const row = input.closest ? input.closest('.co-row') : null;
   if (row) {
@@ -3529,7 +3648,6 @@ function trainPrintHtml(list) {
       processPrintBlock(tr) +
       checkoffPrintBlock(tr) +
       signoffFooterHtml(tr) +
-      '<section style="page-break-before:always">' + navProgPrintBlock(tr) + '</section>' +
       '</section>';
   }).join('');
 
@@ -3626,45 +3744,6 @@ function checkoffPrintBlock(tr) {
   }).join('');
   const afAudit = auditFootnote(tr, 'New Hire Training Record');
   return banner + '<h3>' + esc(tr.name) + ' — ' + done + '/' + CHECKOFF_TOTAL + ' signed</h3>' + groups + (afAudit ? '<div class="audit-line">' + esc(afAudit) + '</div>' : '');
-}
-
-/* The Navigator Program prints on its OWN page (page-break-before) so HR
-   receives the completed Navigator portion as a separate sheet, apart from the
-   driver/trainer check-off. Blank rows print when nothing is filled in yet. */
-function navProgPrintBlock(tr) {
-  ensureNavProg(tr);
-  const n = tr.navProg;
-  const done = navCount(tr);
-  const pend = NAV_TOTAL - done;
-  const banner = pend > 0
-    ? '<div class="pdf-pending">PENDING — ' + pend + ' of ' + NAV_TOTAL + ' Navigator Program items still awaiting initials.</div>'
-    : '<div class="pdf-complete">Navigator Program complete — all ' + NAV_TOTAL + ' items initialled by both sides.</div>';
-  const rows = (g) => g.items.map((it) => {
-    const s = navItem(tr, it);
-    return '<tr><td>' + esc(it) + '</td><td>' + esc(coInitOk(s.nh) ? s.nh.toUpperCase() : '') + '</td><td>' + esc(coInitOk(s.nav) ? s.nav.toUpperCase() : '') + '</td><td>' + esc(s.date) + '</td></tr>';
-  }).join('');
-  const groups = NAV_GROUPS.map((g) => {
-    const gdone = g.items.filter((it) => navDone(navItem(tr, it))).length;
-    return '<h4>' + esc(g.name) + ' (' + gdone + '/' + g.items.length + ')</h4>' +
-      '<table><tr><th>Item</th><th>New Hire Initials</th><th>Navigator Initials</th><th>Date</th></tr>' + rows(g) + '</table>';
-  }).join('');
-  const values = '<h4>U.S. Venture\'s Values (walked through together)</h4><table>' +
-    NAV_VALUES.map(([t, d]) => '<tr><td style="width:26%"><strong>' + esc(t) + '</strong></td><td>' + esc(d) + '</td></tr>').join('') +
-    '</table>';
-  const meta = '<p style="margin:0 0 8px;font-size:11px;color:#555">Navigator: ' + esc(n.navigator || '—') +
-    ' · New Hire: ' + esc(n.newHire || tr.name || '—') +
-    ' · Department: ' + esc(n.department || '—') +
-    ' · 90-day start: ' + esc(n.startDate || tr.hireDate || '—') + '</p>';
-  const sigs = '<div class="foot">' +
-    '<div class="sig"><div>New Hire Signature</div></div>' +
-    '<div class="sig"><div>Navigator Signature</div></div>' +
-    '<div class="sig"><div>Operations Leader Signature</div></div>' +
-    '<div class="sig"><div>Date</div></div>' +
-    '</div>' +
-    '<p style="margin:14px 0 0;font-size:11px;color:#555">Once complete, please sign below and submit to your HR Business Partner.</p>';
-  const afAudit = auditFootnote(tr, 'Navigator Program');
-  return '<h3>' + esc(tr.name) + ' — Navigator Program (' + done + '/' + NAV_TOTAL + ')</h3>' +
-    meta + banner + groups + values + sigs + (afAudit ? '<div class="audit-line">' + esc(afAudit) + '</div>' : '');
 }
 
 function signoffFooterHtml(tr) {

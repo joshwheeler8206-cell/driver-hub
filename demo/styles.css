@@ -583,8 +583,9 @@ input.invalid, select.invalid, textarea.invalid { border-color: #dc2626 !importa
    label used to be given an extra 34px, which shifted its columns left). So
    both initials columns use the width the longest label needs — see the
    spelled-out header wording in the 481px block below. */
-.co-drv { width: 70px; flex-shrink: 0; }
-.co-tr { width: 104px; flex-shrink: 0; }
+/* Trainee and trainer/compliance initials boxes are the SAME size so every
+   box in every group lines up in two straight columns. */
+.co-drv, .co-tr { width: 104px; flex-shrink: 0; }
 .co-date { width: 118px; flex-shrink: 0; }
 /* The header cells name the initials ("Trainee Initials" / "Trainer Initials").
    Phones get the short wording instead — see the 480px block below. */
@@ -602,16 +603,6 @@ input.invalid, select.invalid, textarea.invalid { border-color: #dc2626 !importa
 .co-row.done .co-input { border-color: #86efac; background: #f0fdf4; }
 .co-actions { padding: 8px 14px; border-top: 1px solid var(--line); }
 
-/* ---------- Navigator Program (90-day onboarding) ---------- */
-/* Reuses the check-off table so both sides initial in the same layout; only the
-   header wording differs ("New Hire Initials" / "Navigator Initials"). */
-.navp .co-count { color: var(--accent); background: #dbeafe; }
-.navp .co-row.done .co-item { color: var(--green); font-weight: 600; }
-.navp-values { margin: 12px 0 4px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; background: #f8fafc; }
-.navp-values summary { cursor: pointer; font-size: 13px; font-weight: 700; color: var(--ink); }
-.navp-value { margin-top: 10px; }
-.navp-value-t { font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; color: var(--muted); }
-.navp-value-d { font-size: 12.5px; color: var(--ink); margin-top: 2px; }
 
 /* ---------- Certs ---------- */
 .summary { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
@@ -854,7 +845,7 @@ input.invalid, select.invalid, textarea.invalid { border-color: #dc2626 !importa
   .co-row.co-th .co-drv, .co-row.co-th .co-tr { white-space: normal; line-height: 1.15; }
   .co-lbl-full { display: none; }
   .co-lbl-short { display: inline; }
-  .co-drv, .co-tr, .co-date { flex: 1 1 0; width: auto; }
+  .co-drv, .co-tr, .co-date { flex: 1 1 0; width: auto; min-width: 0; }
 }
 
 /* The initials columns are the same width in every group (see .co-tr above) so
@@ -887,3 +878,25 @@ input.invalid, select.invalid, textarea.invalid { border-color: #dc2626 !importa
 .pr-item .check { width: 24px; height: 24px; font-size: 13px; border-radius: 7px; }
 .pr-item.done .topic-name { color: var(--green); }
 .pr-contacts { margin-top: 4px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: #f8fafc; }
+
+/* ---------- Fleet Roster ---------- */
+.fl-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 4px 0 12px; }
+.fl-stat { border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; font-size: 12px; color: var(--muted); text-align: center; }
+.fl-stat strong { display: block; font-size: 22px; color: var(--ink); line-height: 1.1; }
+.fl-stat.bad strong { color: var(--red); }
+.fl-stat.warn strong { color: var(--amber); }
+.fl-banner { border-radius: 12px; padding: 10px 12px; margin: 8px 0; font-size: 13px; line-height: 1.35; }
+.fl-banner b { display: block; font-size: 14px; }
+.fl-banner span { display: block; margin-top: 3px; }
+.fl-banner.no { background: #fee2e2; color: #991b1b; border: 2px solid #dc2626; }
+.fl-banner.soon { background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; }
+.fl-banner.ok { background: #dcfce7; color: #166534; border: 1px solid #22c55e; }
+.fl-check { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.fl-check-l { font-size: 13px; font-weight: 700; color: var(--ink); }
+.fl-check .roster-cert-status { margin: 0; }
+.fl-found { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-top: 4px; }
+.fl-found-h, .fl-unit { font-size: 16px; font-weight: 800; margin: 0 0 2px; }
+.fl-card.oos { border-left: 5px solid #dc2626; }
+:root[data-theme='dark'] .fl-banner.no { background: #450a0a; color: #fecaca; }
+:root[data-theme='dark'] .fl-banner.soon { background: #451a03; color: #fde68a; }
+:root[data-theme='dark'] .fl-banner.ok { background: #052e16; color: #bbf7d0; }
