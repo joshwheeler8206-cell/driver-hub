@@ -948,9 +948,10 @@ const FLEET_ITEMS = [
   { prop: 'lastInspection', label: 'Annual Federal (DOT) Inspection', input: 'Last Annual Federal Inspection', short: 'Annual inspection', annual: true },
   { prop: 'regExp', label: 'Registration', input: 'Registration Expires', short: 'Registration' },
   { prop: 'insExp', label: 'Insurance', input: 'Insurance Expires', short: 'Insurance' },
-  // Preventive-maintenance service: flagged when due/overdue, but a late service
-  // alone does not ground the truck (blocks:false) the way an expired legal date does.
-  { prop: 'serviceDue', label: 'Next Service (PM)', input: 'Next Service Due', short: 'Service', due: true, blocks: false },
+  // Preventive-maintenance service (leased-truck PMs get missed): an OVERDUE service grounds
+  // the truck like an expired legal date. A blank service date does not (optional) —
+  // the lease / shop may not have given one yet — it just shows NOT SET.
+  { prop: 'serviceDue', label: 'Next Service (PM)', input: 'Next Service Due', short: 'Service', due: true, optional: true },
 ];
 
 function fleetKey(unit) { return String(unit || '').trim().toLowerCase(); }
@@ -991,12 +992,399 @@ function fleetChecks(u) {
 
 // Out of service = something expired or never entered. Reasons are spelled out.
 function fleetProblems(u) {
-  return fleetChecks(u).filter((c) => c.item.blocks !== false && (c.status === 'expired' || c.status === 'unknown'));
+  return fleetChecks(u).filter((c) => c.status === 'expired' || (c.status === 'unknown' && !c.item.optional))
+    .concat(winterProblems(u)).concat(gradeProblems(u));
 }
-// Service that is past due (doesn't ground the unit, but is flagged red).
-function fleetServiceOverdue(u) { return fleetChecks(u).filter((c) => c.item.blocks === false && c.status === 'expired'); }
 function fleetOutOfService(u) { return fleetProblems(u).length > 0; }
 function fleetDueSoon(u) { return fleetChecks(u).filter((c) => c.status === 'critical' || c.status === 'warning'); }
+
+/* ---------- Winter check-off (Nov–Mar) ----------
+   Per-truck winter kit, re-checked every season. Stored on the unit as
+   u.winter = { season: '2026-27', items: { cord: 'ok'|'missing', ... }, at }.
+   A missing FIRE EXTINGUISHER grounds the truck (required equipment); the rest
+   are flagged so they get restocked. */
+const WINTER_ITEMS = [
+  { key: 'cord', label: 'Electric cord (block heater)', short: 'electric cord', say: /\b(?:electric(?:al)? cord|extension cord|heater cord|block heater|plug[- ]in cord|cord)\b/ },
+  { key: 'additive', label: 'Diesel additive (anti-gel)', short: 'diesel additive', say: /\b(?:diesel additive|fuel additive|anti-?gel|additive|power service|howes)\b/ },
+  { key: 'blankets', label: 'Blankets', short: 'blankets', say: /\bblankets?\b/ },
+  { key: 'extinguisher', label: 'Fire extinguisher', short: 'fire extinguisher', say: /\b(?:fire )?extinguisher\b/, grounds: true },
+  { key: 'firstaid', label: 'First aid kit', short: 'first aid kit', say: /\b(?:first[- ]aid(?: kit)?|med(?:ical)? kit)\b/ },
+  { key: 'scraper', label: 'Ice scraper', short: 'ice scraper', say: /\b(?:ice scraper|scraper|snow brush)\b/ },
+];
+const WINTER_ALWAYS_KEY = 'fleetWinterAlways';
+
+// '2026-27' for Nov 2026 – Mar 2027; '' outside winter.
+function winterSeason(iso) {
+  const p = splitISO(iso || todayISO());
+  if (!p.y) return '';
+  if (p.m >= 11) return p.y + '-' + String((p.y + 1) % 100).padStart(2, '0');
+  if (p.m <= 3) return (p.y - 1) + '-' + String(p.y % 100).padStart(2, '0');
+  return '';
+}
+// Season to record against: the real winter season, or (when shown off-season) the coming one.
+function winterSeasonNow() {
+  const s = winterSeason(todayISO());
+  if (s) return s;
+  const y = splitISO(todayISO()).y;
+  return y + '-' + String((y + 1) % 100).padStart(2, '0');
+}
+function winterAlways() { try { return localStorage.getItem(WINTER_ALWAYS_KEY) === 'on'; } catch (e) { return false; } }
+function winterShown() { return !!winterSeason(todayISO()) || winterAlways(); }
+
+// This season's record (never last season's), created on demand when writing.
+function winterRec(u, create) {
+  const season = winterSeasonNow();
+  if (u.winter && u.winter.season === season) return u.winter;
+  if (!create) return null;
+  u.winter = { season, items: {}, at: '' };
+  return u.winter;
+}
+function winterSet(u, key, val) {
+  const w = winterRec(u, true);
+  if (val) w.items[key] = val; else delete w.items[key];
+  w.at = new Date().toISOString();
+}
+// { checked, missing:[item], unchecked:[item], complete }
+function winterStatus(u) {
+  const w = winterRec(u, false);
+  const items = (w && w.items) || {};
+  const missing = WINTER_ITEMS.filter((it) => items[it.key] === 'missing');
+  const unchecked = WINTER_ITEMS.filter((it) => !items[it.key]);
+  return { checked: unchecked.length < WINTER_ITEMS.length, missing, unchecked, complete: !missing.length && !unchecked.length };
+}
+function winterSummary(u) {
+  const s = winterStatus(u);
+  if (!s.checked) return 'not checked yet';
+  if (s.missing.length) return 'MISSING ' + s.missing.map((x) => x.short).join(', ');
+  if (s.unchecked.length) return 'partly checked (' + s.unchecked.map((x) => x.short).join(', ') + ' left)';
+  return 'complete ✓';
+}
+// Missing extinguisher grounds the truck. Uses the latest record even off-season,
+// so marking it missing in March doesn't silently clear in April.
+function winterProblems(u) {
+  const items = (u.winter && u.winter.items) || {};
+  return WINTER_ITEMS.filter((it) => it.grounds && items[it.key] === 'missing').map((it) => ({
+    item: { short: it.label, label: it.label, prop: 'winter_' + it.key }, status: 'expired', due: '',
+    text: 'MISSING (winter check-off ' + fmtDate(String(u.winter.at || '').slice(0, 10)) + ')',
+  }));
+}
+
+function fleetWinterCard(u, onChange) {
+  const s = winterStatus(u);
+  const items = (winterRec(u, false) || { items: {} }).items;
+  const box = el('div', { class: 'fl-winter' + (s.missing.length ? ' bad' : s.complete ? ' ok' : '') });
+  const changed = () => { if (onChange) onChange(); };
+  box.appendChild(el('div', { class: 'fl-winter-h' }, [
+    el('b', {}, ['❄️ Winter Kit ' + winterSeasonNow().replace('-', '–')]),
+    el('span', {}, [winterSummary(u)]),
+  ]));
+  for (const it of WINTER_ITEMS) {
+    const v = items[it.key] || '';
+    box.appendChild(el('div', { class: 'fl-wrow' }, [
+      el('span', { class: 'fl-wl' }, [it.label + (it.grounds ? ' *' : '')]),
+      el('span', { class: 'fl-wbtns' }, [
+        el('button', { class: 'fl-wb' + (v === 'ok' ? ' on ok' : ''), onclick: () => { winterSet(u, it.key, v === 'ok' ? '' : 'ok'); changed(); } }, ['✓ Have']),
+        el('button', { class: 'fl-wb' + (v === 'missing' ? ' on bad' : ''), onclick: () => { winterSet(u, it.key, v === 'missing' ? '' : 'missing'); changed(); } }, ['✗ Missing']),
+      ]),
+    ]));
+  }
+  box.appendChild(el('div', { class: 'fl-wfoot' }, [
+    el('button', { class: 'btn small', onclick: () => { for (const it of WINTER_ITEMS) if (!items[it.key]) winterSet(u, it.key, 'ok'); changed(); } }, ['✓ Everything else is there']),
+    el('span', { class: 'fl-wnote' }, ['* missing extinguisher = out of service']),
+  ]));
+  return box;
+}
+
+/* ---------- Truck inspection + grade ----------
+   One inspection per truck per day (u.inspections[], newest last), auto-saved as
+   items are rated. Good = 2, Needs attention = 1, Fail = 0, N/A not counted.
+   A = 90%+, B = 80%+, C = 70%+, D = 60%+, F below. A FAIL on a safety item
+   (grounds:true) puts the truck OUT OF SERVICE until a later rating clears it.
+   The truck's assigned driver (u.driver) is stamped on each inspection so the
+   grades roll up into a per-driver average, trend and repeat-problem flags. */
+const GRADE_ITEMS = [
+  { key: 'cab', label: 'Cab clean & organized', short: 'cab', say: /\b(?:cab|inside|interior|floor ?boards?)\b/ },
+  { key: 'exterior', label: 'Exterior / body clean', short: 'exterior', say: /\b(?:exterior|outside|body)\b/ },
+  { key: 'glass', label: 'Windshield & mirrors', short: 'windshield & mirrors', say: /\b(?:windshield|windows?|mirrors?|glass)\b/ },
+  { key: 'lights', label: 'Lights', short: 'lights', say: /\b(?:lights?|headlights?|tail ?lights?|blinkers?|turn signals?)\b/, grounds: true },
+  { key: 'horn', label: 'Horn', short: 'horn', say: /\bhorn\b/ },
+  { key: 'tires', label: 'Tires (tread / pressure / damage)', short: 'tires', say: /\b(?:tires?|tyres?|tread)\b/, grounds: true },
+  { key: 'brakes', label: 'Brakes', short: 'brakes', say: /\bbrakes?\b/, grounds: true },
+  { key: 'oil', label: 'Oil level', short: 'oil', say: /\b(?:engine )?oil\b(?! change)/ },
+  { key: 'coolant', label: 'Coolant', short: 'coolant', say: /\b(?:coolant|antifreeze|radiator)\b/ },
+  { key: 'washer', label: 'Washer fluid', short: 'washer fluid', say: /\b(?:washer(?: fluid)?|wiper fluid)\b/ },
+  { key: 'belts', label: 'Belts & hoses', short: 'belts & hoses', say: /\b(?:belts?|hoses?)\b/ },
+  { key: 'leaks', label: 'No fluid leaks (incl. wheel seals)', short: 'leaks', say: /\b(?:leaks?|leaking|wheel seals?)\b/, grounds: true },
+  { key: 'paperwork', label: 'Paperwork in cab (reg / insurance card)', short: 'paperwork', say: /\b(?:paperwork|papers|binder)\b/ },
+  { key: 'triangles', label: 'Warning triangles', short: 'triangles', say: /\b(?:triangles?|reflectors?)\b/ },
+];
+const GRADE_VALS = { good: 2, attn: 1, fail: 0 };
+const GRADE_LABEL = { good: 'Good', attn: 'Needs attention', fail: 'Fail', na: 'N/A' };
+
+function gradeLetter(pct) { return pct >= 90 ? 'A' : pct >= 80 ? 'B' : pct >= 70 ? 'C' : pct >= 60 ? 'D' : 'F'; }
+
+// { pct, letter, rated, total, fails[], attn[] } or null when nothing rated.
+function gradeScore(rec) {
+  const r = (rec && rec.ratings) || {};
+  let pts = 0, max = 0;
+  const fails = [], attn = [];
+  for (const it of GRADE_ITEMS) {
+    const v = r[it.key];
+    if (!(v in GRADE_VALS)) continue;
+    pts += GRADE_VALS[v]; max += 2;
+    if (v === 'fail') fails.push(it); else if (v === 'attn') attn.push(it);
+  }
+  if (!max) return null;
+  const raw = Math.round((pts / max) * 100);
+  // A failed SAFETY item caps the inspection at F (counted as 59% in averages) so
+  // the letter is never better than the truck actually is.
+  const capped = fails.some((it) => it.grounds);
+  const pct = capped ? Math.min(raw, 59) : raw;
+  const letter = gradeLetter(pct);
+  const label = capped ? 'F · safety fail' : letter + ' · ' + pct + '%';
+  return { pct, raw, capped, letter, label, rated: Object.keys(r).filter((k) => r[k]).length, total: GRADE_ITEMS.length, fails, attn };
+}
+
+function inspLatest(u) { const l = u.inspections || []; return l.length ? l[l.length - 1] : null; }
+function inspToday(u, create) {
+  const t = todayISO();
+  const l = u.inspections || (create ? (u.inspections = []) : []);
+  let rec = l.find((x) => x.date === t);
+  if (!rec && create) { rec = { id: uid(), date: t, at: new Date().toISOString(), driver: u.driver || '', ratings: {}, note: '' }; l.push(rec); }
+  return rec || null;
+}
+function inspRate(u, key, val) {
+  const rec = inspToday(u, true);
+  if (val) rec.ratings[key] = val; else delete rec.ratings[key];
+  rec.driver = u.driver || rec.driver || '';
+  rec.at = new Date().toISOString();
+}
+
+// Safety fails on the latest inspection ground the truck.
+function gradeProblems(u) {
+  const rec = inspLatest(u);
+  if (!rec) return [];
+  return GRADE_ITEMS.filter((it) => it.grounds && rec.ratings[it.key] === 'fail').map((it) => ({
+    item: { short: it.label, label: it.label, prop: 'grade_' + it.key }, status: 'expired', due: '',
+    text: 'FAILED inspection ' + fmtDate(rec.date),
+  }));
+}
+
+function gradeBadge(sc) {
+  if (!sc) return el('span', { class: 'gr-badge none' }, ['—']);
+  return el('span', { class: 'gr-badge g' + sc.letter }, [sc.label || (sc.letter + ' · ' + sc.pct + '%')]);
+}
+
+// Per-driver roll-up across every truck they were assigned on inspection day.
+function driverInspections(name) {
+  const n = String(name || '').trim().toLowerCase();
+  const out = [];
+  if (!n) return out;
+  for (const u of fleet) for (const rec of (u.inspections || [])) {
+    if (String(rec.driver || '').trim().toLowerCase() === n && gradeScore(rec)) out.push({ u, rec, sc: gradeScore(rec) });
+  }
+  return out.sort((a, b) => String(a.rec.date).localeCompare(String(b.rec.date)));
+}
+function driverGrade(name) {
+  const l = driverInspections(name);
+  if (!l.length) return null;
+  const avg = Math.round(l.reduce((s, x) => s + x.sc.pct, 0) / l.length);
+  const last3 = l.slice(-3);
+  // repeat problems: an item marked attention/fail on 2+ of the last 3 inspections
+  const repeat = GRADE_ITEMS.map((it) => ({ it, n: last3.filter((x) => ['attn', 'fail'].includes(x.rec.ratings[it.key])).length }))
+    .filter((x) => x.n >= 2).map((x) => x.it.short + ' (' + x.n + ' of last ' + last3.length + ')');
+  return { avg, letter: gradeLetter(avg), count: l.length, recent: l.slice(-5).map((x) => x.sc.letter), repeat, list: l };
+}
+function gradedDriverNames() {
+  const s = new Set();
+  for (const u of fleet) { if (u.driver) s.add(u.driver); for (const r of (u.inspections || [])) if (r.driver) s.add(r.driver); }
+  return [...s].sort((a, b) => a.localeCompare(b));
+}
+
+function fleetDriverField(u, onChange) {
+  const names = knownDriverNames();
+  const sel = el('select', { class: 'gr-driver', onchange: (e) => {
+    u.driver = e.target.value;
+    const rec = inspToday(u, false); if (rec) rec.driver = u.driver;
+    if (onChange) onChange();
+  } });
+  sel.appendChild(el('option', { value: '' }, ['— No driver assigned —']));
+  const all = names.includes(u.driver) || !u.driver ? names : [u.driver, ...names];
+  for (const n of all) sel.appendChild(el('option', { value: n, selected: n === u.driver }, [n]));
+  return el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Assigned Driver (gets this truck\'s grades)']), sel]);
+}
+
+function fleetGradeCard(u, onChange) {
+  const rec = inspToday(u, false);
+  const r = (rec && rec.ratings) || {};
+  const sc = gradeScore(rec);
+  const box = el('div', { class: 'gr-card' + (sc && sc.fails.length ? ' bad' : '') });
+  const changed = () => { if (onChange) onChange(); };
+  box.appendChild(el('div', { class: 'gr-head' }, [
+    el('b', {}, ['📋 Inspection & Grade — ' + fmtDate(todayISO())]),
+    gradeBadge(sc),
+  ]));
+  box.appendChild(el('div', { class: 'gr-sub' }, [sc ? sc.rated + ' of ' + sc.total + ' items rated' + (u.driver ? ' · driver: ' + u.driver : ' · no driver assigned') : 'Tap a rating for each item. Saves as you go.']));
+  for (const it of GRADE_ITEMS) {
+    const v = r[it.key] || '';
+    const b = (val, txt) => el('button', { class: 'gr-b ' + val + (v === val ? ' on' : ''), onclick: () => { inspRate(u, it.key, v === val ? '' : val); changed(); } }, [txt]);
+    box.appendChild(el('div', { class: 'gr-row' }, [
+      el('span', { class: 'gr-l' }, [it.label + (it.grounds ? ' *' : '')]),
+      el('span', { class: 'gr-btns' }, [b('good', 'Good'), b('attn', 'Attn'), b('fail', 'Fail'), b('na', 'N/A')]),
+    ]));
+  }
+  box.appendChild(el('div', { class: 'gr-foot' }, [
+    el('button', { class: 'btn small', onclick: () => { for (const it of GRADE_ITEMS) if (!r[it.key]) inspRate(u, it.key, 'good'); changed(); } }, ['✓ Rest are Good']),
+    el('span', { class: 'fl-wnote' }, ['* Fail = out of service + grade F']),
+  ]));
+  box.appendChild(el('input', { type: 'text', class: 'gr-note', placeholder: 'Inspection note (optional)', value: (rec && rec.note) || '',
+    oninput: (e) => { const x = inspToday(u, true); x.note = e.target.value; fleetSave(); } }));
+  return box;
+}
+
+// Voice: "tires good, oil low, cab dirty, lights out, rest good".
+function fleetParseGrade(body) {
+  const res = { set: {}, rest: false, text: body };
+  const restRe = /\b(?:rest|everything else|all the rest|the rest)(?: (?:is|are|looks?))? (?:good|ok|okay|fine)\b/;
+  if (restRe.test(body)) { res.rest = true; res.text = body.replace(restRe, ' '); }
+  const GOOD = /^(?:good|ok|okay|fine|clean|full|working|works|topped|great|there|present|tight)$/;
+  const ATTN = /^(?:low|dirty|messy|worn|needs|attention|cracked|chipped|dim|soft|so-so|fair|okayish|loose|wet)$/;
+  const FAIL = /^(?:fail|failed|failing|bad|bald|flat|broken|out|leaking|missing|empty|dead|filthy|trashed|unsafe|shot|gone)$/;
+  const marks = [];
+  for (const it of GRADE_ITEMS) { const m = new RegExp(it.say.source, 'g'); let x; while ((x = m.exec(res.text))) marks.push({ at: x.index, end: x.index + x[0].length, it }); }
+  marks.sort((a, b) => a.at - b.at || b.end - a.end);
+  const items = [];
+  for (const m of marks) if (!items.some((k) => m.at < k.end && m.end > k.at)) items.push(m);
+  const words = []; const wr = /not working|[a-z'-]+/g; let w;
+  while ((w = wr.exec(res.text))) words.push({ at: w.index, end: w.index + w[0].length, t: w[0] === 'not working' ? 'broken' : w[0] });
+  const rate = (t) => FAIL.test(t) ? 'fail' : ATTN.test(t) ? 'attn' : GOOD.test(t) ? 'good' : '';
+  const used = [];
+  const taken = new Set();
+  items.forEach((m, i) => {
+    const nextAt = i + 1 < items.length ? items[i + 1].at : res.text.length;
+    const prevEnd = i ? items[i - 1].end : 0;
+    // "bald tires": the word right before, if no earlier item already claimed it;
+    // otherwise "tires bald": the first rating word after it (before the next item).
+    const before = words.filter((x) => x.end <= m.at && x.at >= prevEnd);
+    const justBefore = before[before.length - 1];
+    let hit = justBefore && rate(justBefore.t) && !taken.has(justBefore) ? justBefore : null;
+    if (!hit) hit = words.find((x) => x.at >= m.end && x.at < nextAt && rate(x.t) && !taken.has(x));
+    if (hit) { taken.add(hit); res.set[m.it.key] = rate(hit.t); used.push(m, hit); }
+  });
+  for (const u of used) res.text = res.text.slice(0, u.at) + ' '.repeat(u.end - u.at) + res.text.slice(u.end);
+  return res;
+}
+
+/* ---------- Grades screen ---------- */
+function renderFleetGrades() {
+  setAccent('#c2410c');
+  homeSubview = 'fleet';
+  const view = document.getElementById('view');
+  view.innerHTML = '';
+  view.appendChild(el('div', { class: 'route-head' }, [
+    el('button', { class: 'btn ghost small', onclick: () => renderFleetView() }, ['← Fleet']),
+    el('div', { class: 'actions', style: 'margin:0' }, [
+      el('button', { class: 'btn ghost small', onclick: () => openGradeReport() }, ['🖨 Print']),
+      el('button', { class: 'btn ghost small', onclick: () => exportInspectionsCsv() }, ['CSV']),
+    ]),
+  ]));
+  const trucks = fleetSorted().map((u) => ({ u, rec: inspLatest(u), sc: gradeScore(inspLatest(u)) }));
+  const graded = trucks.filter((x) => x.sc).sort((a, b) => a.sc.pct - b.sc.pct);
+  view.appendChild(el('div', { class: 'card' }, [
+    el('h2', { class: 'card-title' }, ['📊 Truck Grades']),
+    el('p', { class: 'sub', style: 'margin:0 0 8px' }, ['Latest inspection per truck, lowest first. Grade the trucks from the Walk-Through.']),
+    graded.length ? el('div', {}, graded.map((x) => el('button', { class: 'gr-line', onclick: () => { fleetWalkUnit = x.u; renderFleetWalk(); } }, [
+      el('span', { class: 'gr-line-u' }, ['Unit ' + x.u.unit]),
+      el('span', { class: 'gr-line-m' }, [fmtDate(x.rec.date) + (x.rec.driver ? ' · ' + x.rec.driver : '') + (x.sc.fails.length ? ' · FAIL: ' + x.sc.fails.map((i) => i.short).join(', ') : x.sc.attn.length ? ' · fix: ' + x.sc.attn.map((i) => i.short).join(', ') : '')]),
+      gradeBadge(x.sc),
+    ]))) : el('div', { class: 'empty small' }, ['No trucks graded yet.']),
+    trucks.length > graded.length ? el('p', { class: 'sub', style: 'margin:8px 0 0' }, ['Not graded yet: Unit ' + trucks.filter((x) => !x.sc).map((x) => x.u.unit).join(', ')]) : null,
+  ]));
+  const ds = gradedDriverNames().map((n) => ({ n, g: driverGrade(n) })).filter((x) => x.g).sort((a, b) => a.g.avg - b.g.avg);
+  view.appendChild(el('div', { class: 'card' }, [
+    el('h2', { class: 'card-title' }, ['👤 Driver Grades']),
+    el('p', { class: 'sub', style: 'margin:0 0 8px' }, ['Average of every inspection on the truck they were assigned. Repeat problems = flagged on 2+ of their last 3.']),
+    ds.length ? el('div', {}, ds.map((x) => el('div', { class: 'gr-line' }, [
+      el('span', { class: 'gr-line-u' }, [x.n]),
+      el('span', { class: 'gr-line-m' }, [x.g.count + ' inspection(s) · recent ' + x.g.recent.join(' ') + (x.g.repeat.length ? ' · ⚠ repeat: ' + x.g.repeat.join(', ') : '')]),
+      gradeBadge({ letter: x.g.letter, pct: x.g.avg }),
+    ]))) : el('div', { class: 'empty small' }, ['Assign drivers to trucks (Walk-Through) to see driver grades.']),
+  ]));
+}
+
+function exportInspectionsCsv() {
+  const rows = [['Date', 'Unit', 'Driver', 'Score %', 'Grade', 'Safety Fail', ...GRADE_ITEMS.map((i) => i.label), 'Note']];
+  for (const u of fleet) for (const rec of (u.inspections || [])) {
+    const sc = gradeScore(rec);
+    rows.push([rec.date, u.unit, rec.driver || '', sc ? sc.raw : '', sc ? sc.letter : '', sc && sc.capped ? 'YES' : '', ...GRADE_ITEMS.map((i) => GRADE_LABEL[rec.ratings[i.key]] || ''), rec.note || '']);
+  }
+  if (rows.length === 1) { toast('No inspections yet.'); return; }
+  downloadCsv('truck-inspections-' + todayISO() + '.csv', rows);
+}
+
+function openGradeReport() {
+  const trucks = fleetSorted().map((u) => ({ u, rec: inspLatest(u), sc: gradeScore(inspLatest(u)) })).filter((x) => x.sc).sort((a, b) => a.sc.pct - b.sc.pct);
+  if (!trucks.length) { toast('No trucks graded yet.'); return; }
+  const w = window.open('', '_blank', 'width=900,height=900');
+  if (!w) { toast('Allow pop-ups to open the report.'); return; }
+  const css = 'body{font-family:Arial,sans-serif;color:#111;margin:24px;font-size:12px}h1{font-size:18px;margin:8px 0 2px}h2{font-size:14px;margin:18px 0 4px}p{margin:0 0 8px;color:#555}' +
+    'table{width:100%;border-collapse:collapse}th,td{border:1px solid #bbb;padding:6px 7px;text-align:left;vertical-align:top}th{background:#f1f5f9;font-size:11px;text-transform:uppercase}td.g{font-weight:700;font-size:15px;text-align:center;width:70px}' +
+    '.bar{margin:0 0 14px}.bar button{font:inherit;padding:8px 14px;border:1px solid #94a3b8;border-radius:8px;background:#fff;cursor:pointer}@media print{.bar{display:none}}.logo{height:46px}';
+  const trows = trucks.map((x) => '<tr><td><b>Unit ' + esc(x.u.unit) + '</b></td><td class="g">' + x.sc.letter + '<br><small>' + (x.sc.capped ? 'safety fail' : x.sc.pct + '%') + '</small></td><td>' + esc(fmtDate(x.rec.date)) +
+    '</td><td>' + esc(x.rec.driver || '—') + '</td><td>' + esc(x.sc.fails.map((i) => i.label).join(', ') || '—') + '</td><td>' + esc(x.sc.attn.map((i) => i.label).join(', ') || '—') + '</td><td>' + esc(x.rec.note || '') + '</td></tr>').join('');
+  const ds = gradedDriverNames().map((n) => ({ n, g: driverGrade(n) })).filter((x) => x.g).sort((a, b) => a.g.avg - b.g.avg);
+  const drows = ds.map((x) => '<tr><td><b>' + esc(x.n) + '</b></td><td class="g">' + x.g.letter + '<br><small>' + x.g.avg + '%</small></td><td>' + x.g.count + '</td><td>' + esc(x.g.recent.join(' ')) + '</td><td>' + esc(x.g.repeat.join(', ') || '—') + '</td></tr>').join('');
+  w.document.write('<!doctype html><html><head><meta charset=utf-8><title>Truck grades — ' + esc(todayISO()) + '</title><style>' + css + '</style></head><body>' +
+    '<div class="bar"><button onclick="print()">🖨 Print / Save PDF</button></div>' +
+    (typeof AF_LOGO !== 'undefined' ? '<img class="logo" src="' + AF_LOGO + '" alt="U.S. AutoForce">' : '') +
+    '<h1>Truck Inspection Grades</h1><p>Generated ' + esc(fmtDate(todayISO())) + ' · A 90%+ · B 80%+ · C 70%+ · D 60%+ · F below · Good=2, Needs attention=1, Fail=0 · a Fail on tires, brakes, lights or leaks = F (counts as 59% in driver averages)</p>' +
+    '<h2>Trucks (latest inspection, lowest first)</h2><table><tr><th>Truck</th><th>Grade</th><th>Date</th><th>Driver</th><th>Failed</th><th>Needs attention</th><th>Note</th></tr>' + trows + '</table>' +
+    (drows ? '<h2>Drivers</h2><table><tr><th>Driver</th><th>Average</th><th>Inspections</th><th>Recent</th><th>Repeat problems</th></tr>' + drows + '</table>' : '') +
+    '</body></html>');
+  w.document.close();
+}
+
+/* Restock list: every missing winter item across the fleet, with counts. */
+function winterRestock() {
+  const byItem = WINTER_ITEMS.map((it) => ({ it, units: [] }));
+  const unchecked = [];
+  for (const u of fleetSorted()) {
+    const s = winterStatus(u);
+    if (!s.checked) { unchecked.push(u.unit); continue; }
+    for (const m of s.missing) byItem.find((x) => x.it === m).units.push(u.unit);
+  }
+  return { needs: byItem.filter((x) => x.units.length), unchecked };
+}
+
+function winterRestockText() {
+  const r = winterRestock();
+  const lines = ['Winter kit restock — U.S. AutoForce (' + fmtDate(todayISO()) + ')', ''];
+  for (const x of r.needs) lines.push(x.it.label + ': ' + x.units.length + '  (Unit ' + x.units.join(', ') + ')');
+  if (!r.needs.length) lines.push('Nothing missing on the trucks checked so far.');
+  if (r.unchecked.length) lines.push('', 'Not checked yet: Unit ' + r.unchecked.join(', '));
+  return lines.join('\n');
+}
+
+function openWinterRestock() {
+  const r = winterRestock();
+  if (!r.needs.length && !r.unchecked.length) { toast('Every truck\'s winter kit is complete. ❄️'); return; }
+  const w = window.open('', '_blank', 'width=820,height=900');
+  if (!w) { toast('Allow pop-ups to open the restock list.'); return; }
+  const css = 'body{font-family:Arial,sans-serif;color:#111;margin:24px;font-size:13px}h1{font-size:18px;margin:8px 0 2px}p{margin:0 0 10px;color:#555}' +
+    'table{width:100%;border-collapse:collapse;margin-top:6px}th,td{border:1px solid #bbb;padding:7px 8px;text-align:left}th{background:#f1f5f9;font-size:11px;text-transform:uppercase}' +
+    'td.n{font-size:18px;font-weight:700;text-align:center;width:60px}.bar{margin:0 0 14px}.bar button{font:inherit;padding:8px 14px;margin-right:8px;border:1px solid #94a3b8;border-radius:8px;background:#fff;cursor:pointer}@media print{.bar{display:none}}.logo{height:46px}';
+  const mail = 'mailto:?subject=' + encodeURIComponent('Winter kit restock') + '&body=' + encodeURIComponent(winterRestockText());
+  const rows = r.needs.map((x) => '<tr><td>' + esc(x.it.label) + '</td><td class="n">' + x.units.length + '</td><td>Unit ' + esc(x.units.join(', ')) + '</td></tr>').join('');
+  w.document.write('<!doctype html><html><head><meta charset=utf-8><title>Winter kit restock — ' + esc(todayISO()) + '</title><style>' + css + '</style></head><body>' +
+    '<div class="bar"><button onclick="print()">🖨 Print / Save PDF</button><a href="' + esc(mail) + '"><button>✉️ Email list</button></a></div>' +
+    (typeof AF_LOGO !== 'undefined' ? '<img class="logo" src="' + AF_LOGO + '" alt="U.S. AutoForce">' : '') +
+    '<h1>Winter Kit Restock</h1><p>Season ' + esc(winterSeasonNow()) + ' · generated ' + esc(fmtDate(todayISO())) + '</p>' +
+    (rows ? '<table><tr><th>Item</th><th>Need</th><th>Trucks</th></tr>' + rows + '</table>' : '<p><b>Nothing missing on the trucks checked so far.</b></p>') +
+    (r.unchecked.length ? '<p style="margin-top:14px"><b>Not checked yet:</b> Unit ' + esc(r.unchecked.join(', ')) + '</p>' : '') +
+    '</body></html>');
+  w.document.close();
+}
+
 
 function fleetSave() { persist(FLEET_DB, FLEET_KEY, fleet); }
 
@@ -1024,14 +1412,7 @@ function fleetBanner(u) {
       el('span', {}, [probs.map((c) => c.item.short + ': ' + c.text).join(' · ')]),
     ]);
   }
-  const late = fleetServiceOverdue(u);
   const soon = fleetDueSoon(u);
-  if (late.length) {
-    return el('div', { class: 'fl-banner soon' }, [
-      el('b', {}, ['🔧 Cleared to drive — SERVICE OVERDUE, schedule it now']),
-      el('span', {}, [late.concat(soon).map((c) => c.item.short + ' ' + c.text).join(' · ')]),
-    ]);
-  }
   if (soon.length) {
     return el('div', { class: 'fl-banner soon' }, [
       el('b', {}, ['⚠️ Cleared to drive — renew soon']),
@@ -1045,7 +1426,7 @@ function fleetStatusRow(c) {
   const m = CERT_STATUS_META[c.status];
   return el('div', { class: 'fl-check' }, [
     el('span', { class: 'fl-check-l' }, [c.item.label]),
-    el('span', { class: 'roster-cert-status ' + m.cls }, [c.status === 'expired' ? c.text : (c.status === 'unknown' ? (c.item.blocks === false ? 'NOT SET' : 'MISSING') : m.label) + ' · ' + c.text]),
+    el('span', { class: 'roster-cert-status ' + m.cls }, [c.status === 'expired' ? c.text : (c.status === 'unknown' ? (c.item.optional ? 'NOT SET' : 'MISSING') : m.label) + ' · ' + c.text]),
   ]);
 }
 
@@ -1064,20 +1445,30 @@ function renderFleetView(focusUnit) {
   ]));
 
   const oos = fleet.filter(fleetOutOfService).length;
-  const soon = fleet.filter((u) => !fleetOutOfService(u) && (fleetDueSoon(u).length || fleetServiceOverdue(u).length)).length;
+  const soon = fleet.filter((u) => !fleetOutOfService(u) && fleetDueSoon(u).length).length;
   view.appendChild(el('div', { class: 'card' }, [
     el('h2', { class: 'card-title' }, ['🚛 Fleet Roster']),
-    el('p', { class: 'sub', style: 'margin:0 0 8px' }, ['Type a unit number to pull it up. Each unit tracks its last annual federal inspection (due one year later), registration, insurance and next service. An expired or missing inspection, registration or insurance puts the unit OUT OF SERVICE until it is fixed; an overdue service is flagged so it gets scheduled.']),
+    el('p', { class: 'sub', style: 'margin:0 0 8px' }, ['Type a unit number to pull it up. Each unit tracks its last annual federal inspection (due one year later), registration, insurance and next service. An expired or missing inspection, registration or insurance — or an OVERDUE service — puts the unit OUT OF SERVICE until it is fixed.']),
     el('div', { class: 'fl-stats' }, [
       el('div', { class: 'fl-stat' }, [el('strong', {}, [String(fleet.length)]), 'units']),
       el('div', { class: 'fl-stat bad' }, [el('strong', {}, [String(oos)]), 'out of service']),
-      el('div', { class: 'fl-stat warn' }, [el('strong', {}, [String(soon)]), 'due soon / service late']),
+      el('div', { class: 'fl-stat warn' }, [el('strong', {}, [String(soon)]), 'due within 30 days']),
     ]),
     el('div', { class: 'field' }, [
       el('span', { class: 'field-label' }, ['Unit Number']),
       el('input', { id: 'fleetUnit', list: 'fleet-units', autocomplete: 'off', placeholder: 'e.g. 412', inputmode: 'text', oninput: () => fleetLookup(), onchange: () => fleetLookup() }),
     ]),
     el('div', { id: 'fleetLookup' }),
+    el('div', { class: 'actions', style: 'margin-top:10px' }, [
+      el('button', { class: 'btn primary', onclick: () => { fleetWalkUnit = null; renderFleetWalk(); } }, ['🚛 Walk-Through']),
+      el('button', { class: 'btn', onclick: () => openFleetServiceList() }, ['🔧 Service list for lease / shop']),
+      winterShown() ? el('button', { class: 'btn', onclick: () => openWinterRestock() }, ['❄️ Winter restock list']) : null,
+      el('button', { class: 'btn', onclick: () => renderFleetGrades() }, ['📊 Grades']),
+    ]),
+    el('label', { class: 'fl-wtoggle' }, [
+      el('input', { type: 'checkbox', checked: winterAlways(), onchange: (e) => { try { localStorage.setItem(WINTER_ALWAYS_KEY, e.target.checked ? 'on' : 'off'); } catch (er) {} renderFleetView(); } }),
+      ' Show the winter check-off outside Nov–Mar',
+    ]),
   ]));
 
   if (fleet.length) {
@@ -1180,6 +1571,10 @@ function fleetCard(u) {
     text('vin', 'VIN', '17 characters'),
     text('warehouse', 'Warehouse / Location', 'e.g. West Branch'),
     text('notes', 'Notes', 'Shop, permits, IFTA, etc.'),
+    u.walkedAt ? el('p', { class: 'sub', style: 'margin:4px 0 8px' }, ['Last walk-through check: ' + fmtDate(String(u.walkedAt).slice(0, 10))]) : null,
+    gradeScore(inspLatest(u)) ? el('p', { class: 'sub', style: 'margin:4px 0 8px' }, ['📋 Last grade: ' + gradeScore(inspLatest(u)).label + ' · ' + fmtDate(inspLatest(u).date) + (inspLatest(u).driver ? ' · ' + inspLatest(u).driver : '')]) : null,
+    u.driver ? el('p', { class: 'sub', style: 'margin:4px 0 8px' }, ['👤 Assigned driver: ' + u.driver]) : null,
+    winterShown() ? el('p', { class: 'sub fl-wline' + (winterStatus(u).missing.length ? ' bad' : '') , style: 'margin:4px 0 8px' }, ['❄️ Winter kit: ' + winterSummary(u)]) : null,
     el('div', { class: 'actions' }, [el('button', { class: 'btn ghost small danger', onclick: () => deleteFleetUnit(u) }, ['Delete unit'])]),
   ]);
   return card;
@@ -1199,14 +1594,455 @@ function exportFleet() {
 
 function exportFleetCsv() {
   if (!fleet.length) { toast('Fleet roster is empty.'); return; }
-  const rows = [['Unit', 'Plate', 'Year/Make/Model', 'VIN', 'Warehouse', 'Last Annual Inspection', 'Inspection Due', 'Registration Expires', 'Insurance Expires', 'Next Service Due', 'Service Due Miles', 'Status', 'Problems', 'Notes']];
+  const rows = [['Unit', 'Plate', 'Year/Make/Model', 'VIN', 'Warehouse', 'Last Annual Inspection', 'Inspection Due', 'Registration Expires', 'Insurance Expires', 'Next Service Due', 'Service Due Miles', 'Status', 'Problems', 'Last Walk-Through', 'Winter Kit', 'Assigned Driver', 'Last Grade', 'Notes']];
   for (const u of fleetSorted()) {
     const ch = fleetChecks(u);
     rows.push([u.unit, u.plate, u.make, u.vin, u.warehouse, u.lastInspection, ch[0].due, u.regExp, u.insExp, u.serviceDue, u.serviceMiles,
-      fleetOutOfService(u) ? 'OUT OF SERVICE' : fleetServiceOverdue(u).length ? 'SERVICE OVERDUE' : fleetDueSoon(u).length ? 'DUE SOON' : 'OK',
-      fleetProblems(u).concat(fleetServiceOverdue(u)).map((c) => c.item.short + ': ' + c.text).join('; '), u.notes]);
+      fleetOutOfService(u) ? 'OUT OF SERVICE' : fleetDueSoon(u).length ? 'DUE SOON' : 'OK',
+      fleetProblems(u).map((c) => c.item.short + ': ' + c.text).join('; '), String(u.walkedAt || '').slice(0, 10), winterRec(u, false) ? winterSummary(u) : '', u.driver || '', gradeScore(inspLatest(u)) ? gradeScore(inspLatest(u)).label : '', u.notes]);
   }
   downloadCsv('fleet-roster-' + todayISO() + '.csv', rows);
+}
+
+/* ---------- Fleet walk-through: talk instead of type ----------
+   Walking the lot: tap the mic and say e.g. "unit 412 inspection March 3rd 2026
+   registration June 2027 insurance July 1st 2027 service December 15th at
+   125,000 miles all good". fleetParseSpeech() turns that into field updates.
+   The same parser runs on typed text, so a phone keyboard's own mic button
+   works anywhere the browser speech API doesn't. */
+const FLEET_SAY = [
+  { prop: 'lastInspection', re: /\b(annual|inspection|inspected|federal|d\.?o\.?t\.?)\b/g },
+  { prop: 'regExp', re: /\b(registration|registered|tags?)\b/g },
+  { prop: 'insExp', re: /\b(insurance|insured)\b/g },
+  { prop: 'serviceDue', re: /\b(service|oil change|p\.?m\.?|maintenance)\b/g },
+];
+const MONTHS_SAY = { jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8, sep: 9, sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12 };
+const DAY_WORDS = (() => {
+  const ones = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+  const ord = ['', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth'];
+  const m = { ten: 10, tenth: 10, eleven: 11, eleventh: 11, twelve: 12, twelfth: 12, thirteen: 13, thirteenth: 13, fourteen: 14, fourteenth: 14, fifteen: 15, fifteenth: 15, sixteen: 16, sixteenth: 16, seventeen: 17, seventeenth: 17, eighteen: 18, eighteenth: 18, nineteen: 19, nineteenth: 19, twenty: 20, twentieth: 20, thirty: 30, thirtieth: 30 };
+  for (let i = 1; i <= 9; i++) {
+    m[ones[i]] = i; m[ord[i]] = i;
+    m['twenty ' + ones[i]] = 20 + i; m['twenty ' + ord[i]] = 20 + i;
+    m['twenty-' + ones[i]] = 20 + i; m['twenty-' + ord[i]] = 20 + i;
+  }
+  m['thirty one'] = m['thirty first'] = m['thirty-one'] = m['thirty-first'] = 31;
+  return m;
+})();
+
+function _isoFrom(y, m, d) {
+  const last = new Date(y, m, 0).getDate();
+  return joinISO(y, m, Math.min(d, last));
+}
+
+// Pull one date out of a phrase. past=true -> a missing year means the most
+// recent one (inspection DONE dates); otherwise the next one coming (expirations).
+function fleetSayDate(seg, todayIso, past) {
+  const t = splitISO(todayIso);
+  const s = ' ' + seg.toLowerCase().replace(/(\d)(st|nd|rd|th)\b/g, '$1').replace(/,/g, ' ') + ' ';
+  if (/\btoday\b/.test(s)) return todayIso;
+  if (/\byesterday\b/.test(s)) { const d = new Date(t.y, t.m - 1, t.d - 1); return joinISO(d.getFullYear(), d.getMonth() + 1, d.getDate()); }
+  let m = /\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})\b/.exec(s);
+  if (m) { let y = +m[3]; if (y < 100) y += 2000; if (+m[1] >= 1 && +m[1] <= 12) return _isoFrom(y, +m[1], +m[2]); }
+  m = /\b(\d{1,2})[\/\-](\d{4})\b/.exec(s);                       // 6/2027
+  if (m && +m[1] >= 1 && +m[1] <= 12) return _isoFrom(+m[2], +m[1], past ? 1 : 31);
+  const mm = new RegExp('\\b(' + Object.keys(MONTHS_SAY).sort((a, b) => b.length - a.length).join('|') + ')\\.?\\b(.*)').exec(s);
+  if (!mm) return '';
+  const mon = MONTHS_SAY[mm[1]];
+  let rest = ' ' + mm[2] + ' ';
+  let year = 0, day = 0;
+  // "the 21st of January" / "twenty first of January": day said BEFORE the month
+  const before = s.slice(0, mm.index).trim().split(/\s+/).filter((w) => w && w !== 'of' && w !== 'the');
+  const b2 = before.slice(-2).join(' '), b1 = before.slice(-1).join(' ');
+  if (DAY_WORDS[b2] !== undefined) day = DAY_WORDS[b2];
+  else if (DAY_WORDS[b1] !== undefined) day = DAY_WORDS[b1];
+  else if (/^\d{1,2}$/.test(b1) && +b1 >= 1 && +b1 <= 31) day = +b1;
+  const ym = /\b(20\d\d)\b/.exec(rest) || /\b(20) (\d\d)\b/.exec(rest);
+  if (ym) { year = ym[2] ? 2000 + +ym[2] : +ym[1]; rest = rest.replace(ym[0], ' '); }
+  const dm = day ? null : /^\s*(?:the\s+)?(\d{1,2})\b/.exec(rest);
+  if (dm && +dm[1] >= 1 && +dm[1] <= 31) day = +dm[1];
+  else if (!day) {
+    const w = /^\s*(?:the\s+)?([a-z]+(?:[ -][a-z]+)?)/.exec(rest);
+    if (w) {
+      if (DAY_WORDS[w[1]] !== undefined) day = DAY_WORDS[w[1]];
+      else { const w1 = w[1].split(/[ -]/)[0]; if (DAY_WORDS[w1] !== undefined) day = DAY_WORDS[w1]; }
+    }
+  }
+  if (!year && /\b'?(\d\d)\b/.test(rest) && day) { const y2 = /\b'?(\d\d)\b/.exec(rest.replace(String(day), ' ')); if (y2) year = 2000 + +y2[1]; }
+  // Month only: inspections count from the 1st, expirations run to month end.
+  const dd = day || (past ? 1 : 31);
+  if (!year) {
+    year = t.y;
+    const cand = _isoFrom(year, mon, dd);
+    if (past && cand > todayIso) year -= 1;
+    if (!past && cand < todayIso) year += 1;
+  }
+  return _isoFrom(year, mon, dd);
+}
+
+function fleetParseSpeech(text, todayIso) {
+  const raw = String(text || '');
+  const s = raw.toLowerCase();
+  const out = { unit: '', sets: {}, miles: '', note: '', checked: false, heard: raw.trim(), missed: [] };
+  let body = s;
+  const nm = /\bnotes?\b[:\s]+(.*)$/.exec(s);
+  if (nm) { out.note = raw.slice(raw.length - nm[1].length).trim(); body = s.slice(0, nm.index); }
+  const um = /\b(?:unit|truck|tractor|trailer|number)\s*(?:number\s*)?#?\s*([a-z]{0,3}-?\d[\w-]*)/.exec(body);
+  if (um) { out.unit = um[1].toUpperCase(); body = body.replace(um[0], ' '); }
+  const mi = /\b(?:at\s+)?(\d[\d,]{2,})\s*(?:miles|mi)\b/.exec(body);
+  if (mi) { out.miles = Number(mi[1].replace(/,/g, '')).toLocaleString('en-US'); body = body.replace(mi[0], ' '); }
+  out.winter = fleetParseWinter(body);
+  body = out.winter.rest;
+  out.grade = fleetParseGrade(body);
+  body = out.grade.text;
+  if (/\b(checked|all good|good to go|looks good|it'?s good)\b/.test(body)) out.checked = true;
+  const hits = [];
+  for (const k of FLEET_SAY) { k.re.lastIndex = 0; let m; while ((m = k.re.exec(body))) hits.push({ prop: k.prop, at: m.index, end: m.index + m[0].length }); }
+  hits.sort((a, b) => a.at - b.at);
+  // "annual DOT inspection" = three keywords for one field: merge neighbours of the same field
+  const segs = [];
+  for (const h of hits) {
+    const lastSeg = segs[segs.length - 1];
+    if (lastSeg && lastSeg.prop === h.prop && h.at - lastSeg.end < 12) { lastSeg.end = h.end; continue; }
+    segs.push({ ...h });
+  }
+  segs.forEach((g, i) => {
+    const seg = body.slice(g.end, i + 1 < segs.length ? segs[i + 1].at : body.length);
+    const iso = fleetSayDate(seg, todayIso, g.prop === 'lastInspection');
+    if (iso) out.sets[g.prop] = iso;
+    else out.missed.push(FLEET_ITEMS.find((x) => x.prop === g.prop).short);
+  });
+  return out;
+}
+
+// Winter kit by voice. "winter kit all there (except ice scraper)", "no blankets
+// or scraper", "cord good", "extinguisher missing". An item is MISSING when a
+// negative word (no / missing / need / without / except / out of) comes before it
+// in the same clause, or right after it; a positive word right after it wins.
+function fleetParseWinter(body) {
+  const res = { all: false, set: {}, rest: body };
+  const allRe = /\bwinter (?:kit|stuff|gear|items?)?\s*(?:is\s+|'s\s+)?(?:all there|complete|all good|good|full|all set|everything'?s there)\b/;
+  if (allRe.test(body)) { res.all = true; res.rest = body.replace(allRe, ' '); }
+  const NEG = /^(?:no|missing|need|needs|without|except|out of|lost|gone|none)$/;
+  const POS = /^(?:good|there|have|has|got|ok|okay|yes|present|fine)$/;
+  const clauses = res.rest.split(/[,.;]|\bbut\b/);
+  for (const cl of clauses) {
+    // tag item mentions and marker words in order
+    const marks = [];
+    for (const it of WINTER_ITEMS) { const m = new RegExp(it.say.source, 'g'); let x; while ((x = m.exec(cl))) marks.push({ at: x.index, end: x.index + x[0].length, item: it }); }
+    if (!marks.length) continue;
+    // drop shorter overlapping matches (e.g. "scraper" inside "ice scraper")
+    marks.sort((a, b) => a.at - b.at || b.end - a.end);
+    const items = [];
+    for (const m of marks) if (!items.some((k) => m.at < k.end && m.end > k.at)) items.push(m);
+    const words = [];
+    const wr = /out of|[a-z']+/g; let w;
+    while ((w = wr.exec(cl))) words.push({ at: w.index, t: w[0] });
+    items.forEach((m, i) => {
+      const nextAt = i + 1 < items.length ? items[i + 1].at : cl.length;
+      const after = words.filter((x) => x.at >= m.end && x.at < nextAt);
+      const before = words.filter((x) => x.at < m.at && (i === 0 || x.at >= items[i - 1].end));
+      let st = 'ok';
+      const prevNeg = words.filter((x) => x.at < m.at).reverse().find((x) => NEG.test(x.t) || POS.test(x.t));
+      if (prevNeg && NEG.test(prevNeg.t)) st = 'missing';
+      if (after.some((x) => POS.test(x.t)) && !after.some((x) => NEG.test(x.t))) st = 'ok';
+      else if (after.length && NEG.test(after[0].t)) st = 'missing';
+      void before;
+      res.set[m.item.key] = st;
+    });
+    for (const m of items) res.rest = res.rest.replace(cl.slice(m.at, m.end), ' ');
+  }
+  return res;
+}
+
+let fleetWalkUnit = null;   // unit currently being walked
+let fleetWalkUndo = null;   // { unit, before | null(created) }
+let fleetWalkLog = [];
+
+function fleetWalkedToday(u) { return String(u.walkedAt || '').slice(0, 10) === todayISO(); }
+
+// Apply a parsed sentence. Returns a short human summary.
+function fleetApplySpeech(text) {
+  const p = fleetParseSpeech(text, todayISO());
+  let u = p.unit ? fleetFind(p.unit) : fleetWalkUnit;
+  let created = false;
+  if (p.unit && !u) {
+    u = { id: uid(), unit: p.unit, plate: '', make: '', vin: '', warehouse: '', notes: '', createdAt: new Date().toISOString() };
+    for (const it of FLEET_ITEMS) u[it.prop] = '';
+    fleet.push(u);
+    created = true;
+  }
+  if (!u) return { ok: false, msg: 'Say the unit number first — e.g. "unit 412".' };
+  fleetWalkUndo = { unit: u, before: created ? null : JSON.parse(JSON.stringify(u)) };
+  const done = [];
+  for (const [prop, iso] of Object.entries(p.sets)) { u[prop] = iso; done.push(FLEET_ITEMS.find((x) => x.prop === prop).short + ' ' + fmtDate(iso)); }
+  if (p.miles) { u.serviceMiles = p.miles; done.push('service at ' + p.miles + ' mi'); }
+  if (p.note) { u.notes = (u.notes ? u.notes + ' · ' : '') + p.note; done.push('note added'); }
+  if (p.winter && (p.winter.all || Object.keys(p.winter.set).length)) {
+    if (p.winter.all) for (const it of WINTER_ITEMS) winterSet(u, it.key, 'ok');
+    for (const [k, v] of Object.entries(p.winter.set)) winterSet(u, k, v);
+    done.push('winter kit ' + winterSummary(u));
+  }
+  if (p.grade && (p.grade.rest || Object.keys(p.grade.set).length)) {
+    for (const [k, v] of Object.entries(p.grade.set)) inspRate(u, k, v);
+    if (p.grade.rest) { const rec = inspToday(u, true); for (const it of GRADE_ITEMS) if (!rec.ratings[it.key]) inspRate(u, it.key, 'good'); }
+    const sc = gradeScore(inspToday(u, false));
+    if (sc) done.push('grade ' + sc.label);
+  }
+  if (p.checked) { u.walkedAt = new Date().toISOString(); done.push('✓ checked'); }
+  u.updatedAt = new Date().toISOString();
+  fleetWalkUnit = u;
+  fleetSave();
+  ensureFleetDatalist();
+  let msg = 'Unit ' + u.unit + (created ? ' (new)' : '') + ': ' + (done.length ? done.join(' · ') : 'pulled up');
+  if (p.missed.length) msg += ' — couldn\'t catch a date for ' + p.missed.join(', ');
+  fleetWalkLog.unshift(msg);
+  fleetWalkLog = fleetWalkLog.slice(0, 6);
+  return { ok: true, msg, parsed: p };
+}
+
+function fleetWalkUndoLast() {
+  const un = fleetWalkUndo;
+  if (!un) { toast('Nothing to undo.'); return; }
+  if (un.before === null) fleet = fleet.filter((x) => x !== un.unit);
+  else { Object.keys(un.unit).forEach((k) => { if (!(k in un.before)) delete un.unit[k]; }); Object.assign(un.unit, JSON.parse(JSON.stringify(un.before))); }
+  fleetWalkUndo = null;
+  if (un.before === null && fleetWalkUnit === un.unit) fleetWalkUnit = null;
+  fleetSave();
+  fleetWalkLog.unshift('Undid the last change.');
+  renderFleetWalk();
+}
+
+let _fleetRec = null;
+function fleetSpeechSupported() { return typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition); }
+
+function fleetListen() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const btn = document.getElementById('flMic');
+  const said = document.getElementById('flSaid');
+  if (!SR) { toast('Voice not supported here — tap the text box and use your keyboard\'s 🎤 instead.'); if (said) said.focus(); return; }
+  if (_fleetRec) { try { _fleetRec.stop(); } catch (e) {} return; }
+  const rec = new SR();
+  _fleetRec = rec;
+  rec.lang = 'en-US';
+  rec.interimResults = true;
+  rec.maxAlternatives = 1;
+  let finalText = '';
+  if (btn) { btn.classList.add('on'); btn.textContent = '🔴 Listening… tap to stop'; }
+  rec.onresult = (e) => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) finalText += e.results[i][0].transcript + ' ';
+      else interim += e.results[i][0].transcript;
+    }
+    if (said) said.value = (finalText + interim).trim();
+  };
+  rec.onerror = (e) => {
+    const why = { 'not-allowed': 'Microphone is blocked — allow it in the browser settings.', 'no-speech': 'Didn\'t hear anything — try again.', network: 'Voice needs an internet connection — use the keyboard mic instead.' }[e.error] || ('Voice error: ' + e.error);
+    toast(why);
+  };
+  rec.onend = () => {
+    _fleetRec = null;
+    if (btn) { btn.classList.remove('on'); btn.textContent = '🎤 Tap and talk'; }
+    if (finalText.trim()) { const r = fleetApplySpeech(finalText); toast(r.msg, 4000); renderFleetWalk(); }
+  };
+  try { rec.start(); } catch (e) { _fleetRec = null; toast('Could not start the microphone.'); }
+}
+
+// Walk-through: pick a unit, fill its dates with the dropdowns, tap Checked.
+// Voice is an optional extra (collapsed until opened) using the same parser.
+let fleetWalkVoiceOpen = false;
+
+function fleetWalkOpenUnit(raw) {
+  const unit = String(raw || '').trim();
+  if (!unit) { toast('Enter a unit number.'); return; }
+  let u = fleetFind(unit);
+  if (!u) {
+    if (!confirm('Unit ' + unit + ' isn\'t on the fleet roster yet. Add it?')) return;
+    u = { id: uid(), unit, plate: '', make: '', vin: '', warehouse: '', notes: '', createdAt: new Date().toISOString() };
+    for (const it of FLEET_ITEMS) u[it.prop] = '';
+    fleet.push(u);
+    fleetSave();
+    fleetWalkLog.unshift('Unit ' + unit + ' added');
+  }
+  fleetWalkUnit = u;
+  renderFleetWalk();
+}
+
+function renderFleetWalk() {
+  setAccent('#c2410c');
+  homeSubview = 'fleet';
+  const view = document.getElementById('view');
+  view.innerHTML = '';
+  ensureFleetDatalist();
+  const u = fleetWalkUnit && fleet.includes(fleetWalkUnit) ? fleetWalkUnit : null;
+  view.appendChild(el('div', { class: 'route-head' }, [
+    el('button', { class: 'btn ghost small', onclick: () => { if (_fleetRec) try { _fleetRec.stop(); } catch (e) {} renderFleetView(); } }, ['← Fleet']),
+    el('button', { class: 'btn ghost small', onclick: () => fleetWalkUndoLast() }, ['↩ Undo last']),
+  ]));
+
+  // 1) pick the truck
+  const unitIn = el('input', { id: 'flWalkUnit', list: 'fleet-units', autocomplete: 'off', placeholder: 'Unit # — e.g. 412', value: u ? u.unit : '',
+    onkeydown: (e) => { if (e.key === 'Enter') fleetWalkOpenUnit(e.target.value); } });
+  view.appendChild(el('div', { class: 'card' }, [
+    el('h2', { class: 'card-title' }, ['🚛 Walk-Through']),
+    el('p', { class: 'sub', style: 'margin:0 0 10px' }, ['Pick a truck, check its dates against the paperwork in the cab, fix anything that\'s wrong, then tap Checked.']),
+    el('div', { class: 'fl-pick' }, [
+      unitIn,
+      el('button', { class: 'btn primary', onclick: () => fleetWalkOpenUnit(unitIn.value) }, ['Open']),
+    ]),
+    fleetWalkLog.length ? el('div', { class: 'fl-log' }, fleetWalkLog.slice(0, 3).map((m) => el('div', {}, [m]))) : null,
+  ]));
+
+  // 2) the truck: status + manual entry
+  if (u) {
+    const rows = el('div', {}, [fleetBanner(u), ...fleetChecks(u).map(fleetStatusRow)]);
+    const repaint = () => { rows.innerHTML = ''; rows.appendChild(fleetBanner(u)); for (const c of fleetChecks(u)) rows.appendChild(fleetStatusRow(c)); };
+    const touch = () => {
+      u.updatedAt = new Date().toISOString(); fleetSave(); repaint();
+      const old = document.getElementById('flProgress');
+      if (old && old.parentNode) old.parentNode.replaceChild(fleetWalkProgress(u), old);
+    };
+    view.appendChild(el('div', { class: 'card' }, [
+      el('h3', { class: 'fl-unit' }, ['Unit ' + u.unit + (u.make ? ' · ' + u.make : '')]),
+      rows,
+      ...FLEET_ITEMS.map((it) => el('div', { class: 'field' }, [
+        el('span', { class: 'field-label' }, [it.input]),
+        dateSelects(u[it.prop] || '', (iso) => {
+          if (!iso) return;
+          if (!fleetWalkUndo || fleetWalkUndo.unit !== u) fleetWalkUndo = { unit: u, before: JSON.parse(JSON.stringify(u)) };
+          u[it.prop] = iso; touch();
+        }),
+      ])),
+      el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Service Due at Mileage (optional)']),
+        el('input', { type: 'text', inputmode: 'numeric', value: u.serviceMiles || '', placeholder: 'e.g. 125,000', oninput: (e) => { u.serviceMiles = e.target.value; touch(); } })]),
+      el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Notes']),
+        el('input', { type: 'text', value: u.notes || '', placeholder: 'e.g. left mirror cracked', oninput: (e) => { u.notes = e.target.value; u.updatedAt = new Date().toISOString(); fleetSave(); } })]),
+      fleetDriverField(u, () => { u.updatedAt = new Date().toISOString(); fleetSave(); }),
+      (() => {
+        const holder = el('div', {});
+        const paintG = () => { holder.innerHTML = ''; holder.appendChild(fleetGradeCard(u, () => {
+          if (!fleetWalkUndo || fleetWalkUndo.unit !== u) fleetWalkUndo = { unit: u, before: JSON.parse(JSON.stringify(u)) };
+          touch(); paintG();
+        })); };
+        paintG();
+        return holder;
+      })(),
+      winterShown() ? (() => {
+        const holder = el('div', {});
+        const paintW = () => { holder.innerHTML = ''; holder.appendChild(fleetWinterCard(u, () => {
+          if (!fleetWalkUndo || fleetWalkUndo.unit !== u) fleetWalkUndo = { unit: u, before: JSON.parse(JSON.stringify(u)) };
+          touch(); paintW();
+        })); };
+        paintW();
+        return holder;
+      })() : null,
+      el('div', { class: 'actions', style: 'margin-top:10px' }, [
+        el('button', { class: 'btn primary big', onclick: () => {
+          u.walkedAt = new Date().toISOString(); fleetSave();
+          fleetWalkLog.unshift('Unit ' + u.unit + ': ✓ checked' + (fleetOutOfService(u) ? ' — OUT OF SERVICE' : ''));
+          const nxt = fleetSorted().find((x) => !fleetWalkedToday(x));
+          fleetWalkUnit = nxt || null; fleetWalkUndo = null;
+          renderFleetWalk();
+        } }, [fleetWalkedToday(u) ? '✓ Checked — next truck' : '✓ Mark checked — next truck']),
+        el('button', { class: 'btn ghost', onclick: () => renderFleetView(u.unit) }, ['Plate / VIN / details']),
+      ]),
+    ]));
+  }
+
+  // 3) optional voice
+  const said = el('textarea', { id: 'flSaid', rows: '3', class: 'fl-said', placeholder: 'What you said shows here — or type a sentence like: unit 412 registration June 2027 insurance July 1st 2027 all good' });
+  const voice = el('details', { class: 'card fl-voice' }, [
+    el('summary', {}, ['🎤 Voice entry (optional)']),
+    el('p', { class: 'sub', style: 'margin:8px 0' }, ['Talk instead of tapping: start with the unit number, then any dates. "All good" marks it checked. Needs a signal — or tap the box and use your keyboard\'s 🎤.']),
+    el('button', { id: 'flMic', class: 'btn fl-mic', onclick: () => fleetListen() }, [fleetSpeechSupported() ? '🎤 Tap and talk' : '🎤 Use keyboard mic below']),
+    said,
+    el('div', { class: 'actions', style: 'margin-top:6px' }, [
+      el('button', { class: 'btn', onclick: () => {
+        const v = said.value.trim();
+        if (!v) { toast('Say or type something first.'); return; }
+        const r = fleetApplySpeech(v); toast(r.msg, 4000); renderFleetWalk();
+      } }, ['Apply']),
+    ]),
+    el('details', { class: 'fl-examples' }, [
+      el('summary', {}, ['What can I say?']),
+      el('div', {}, [
+        el('p', {}, ['“Unit 412” — pulls it up (adds it if it\'s new).']),
+        el('p', {}, ['“Inspection March 3rd 2026” — the date the annual federal inspection was DONE (due a year later).']),
+        el('p', {}, ['“Registration June 2027” · “Insurance July 1st 2027” — expiration dates. Month only = end of that month.']),
+        el('p', {}, ['“Service December 15th at 125,000 miles” — next oil change / PM.']),
+        el('p', {}, ['“All good” — marks the truck checked.  “Note: left mirror cracked” — adds a note.']),
+        el('p', {}, ['❄️ “Winter kit all there” · “Winter kit all there except ice scraper” · “No blankets or scraper, cord good”.']),
+        el('p', {}, ['📋 Grading: “Tires good, oil low, cab dirty, lights out, rest good”.  Low / dirty / worn = Needs attention · bad / bald / flat / out / leaking / missing = Fail.']),
+      ]),
+    ]),
+  ]);
+  if (fleetWalkVoiceOpen) voice.setAttribute('open', '');
+  voice.addEventListener('toggle', () => { fleetWalkVoiceOpen = voice.open; });
+  view.appendChild(voice);
+
+  view.appendChild(fleetWalkProgress(u));
+}
+
+function fleetWalkProgress(u) {
+  const checked = fleet.filter(fleetWalkedToday).length;
+  const left = fleetSorted().filter((x) => !fleetWalkedToday(x));
+  return el('div', { class: 'card', id: 'flProgress' }, [
+    el('h2', { class: 'card-title' }, ['Checked today: ' + checked + ' of ' + fleet.length]),
+    left.length ? el('div', { class: 'fl-chips' }, left.map((x) => el('button', {
+      class: 'fl-chip' + (fleetOutOfService(x) ? ' bad' : fleetDueSoon(x).length ? ' warn' : '') + (x === u ? ' cur' : ''),
+      onclick: () => { fleetWalkUnit = x; fleetWalkUndo = null; renderFleetWalk(); },
+    }, [x.unit]))) : el('div', { class: 'sc-clean' }, [fleet.length ? 'Every unit checked today. 🎉' : 'No units yet — type a unit number above to add the first one.']),
+  ]);
+}
+
+/* ---------- Service list for the lease company / shop ----------
+   Every unit whose service is overdue, due within 30 days, or has no service
+   date — printable, or copied into an email to the lease company or shop. */
+function fleetServiceList() {
+  const it = FLEET_ITEMS.find((x) => x.prop === 'serviceDue');
+  const rank = { expired: 0, critical: 1, warning: 2, unknown: 3 };
+  return fleet.map((u) => ({ u, c: fleetChecks(u).find((c) => c.item === it) }))
+    .filter((x) => x.c.status in rank)
+    .sort((a, b) => rank[a.c.status] - rank[b.c.status] || String(a.c.due).localeCompare(String(b.c.due)));
+}
+
+function fleetServiceStatusWord(c) {
+  return c.status === 'expired' ? 'OVERDUE' : c.status === 'unknown' ? 'NO DATE' : 'DUE SOON';
+}
+
+function fleetServiceText() {
+  const list = fleetServiceList();
+  const lines = ['Service needed — U.S. AutoForce units (' + fmtDate(todayISO()) + ')', ''];
+  for (const { u, c } of list) {
+    lines.push('Unit ' + u.unit + ' — ' + fleetServiceStatusWord(c) + (c.due ? ' — due ' + fmtDate(c.due) : '') + (u.serviceMiles ? ' or ' + u.serviceMiles + ' mi' : ''));
+    const bits = [u.make, u.plate && 'Plate ' + u.plate, u.vin && 'VIN ' + u.vin, u.warehouse].filter(Boolean);
+    if (bits.length) lines.push('   ' + bits.join(' · '));
+  }
+  lines.push('', list.length + ' unit(s). Please schedule these and reply with the service dates.');
+  return lines.join('\n');
+}
+
+function openFleetServiceList() {
+  const list = fleetServiceList();
+  if (!list.length) { toast('No units need service in the next 30 days. 🎉'); return; }
+  const w = window.open('', '_blank', 'width=900,height=900');
+  if (!w) { toast('Allow pop-ups to open the service list.'); return; }
+  const rows = list.map(({ u, c }) => '<tr class="' + c.status + '"><td><b>' + esc(u.unit) + '</b></td><td>' + esc(fleetServiceStatusWord(c)) +
+    '</td><td>' + esc(c.due ? fmtDate(c.due) : '—') + '</td><td>' + esc(u.serviceMiles || '') + '</td><td>' + esc(u.make || '') +
+    '</td><td>' + esc(u.plate || '') + '</td><td style="font-family:monospace">' + esc(u.vin || '') + '</td><td>' + esc(u.warehouse || '') + '</td></tr>').join('');
+  const css = 'body{font-family:Arial,sans-serif;color:#111;margin:24px;font-size:12px}h1{font-size:18px;margin:8px 0 2px}p{margin:0 0 10px;color:#555}' +
+    'table{width:100%;border-collapse:collapse}th,td{border:1px solid #bbb;padding:6px 7px;text-align:left;vertical-align:top}th{background:#f1f5f9;font-size:11px;text-transform:uppercase}' +
+    'tr.expired td:nth-child(2){color:#b91c1c;font-weight:700}tr.critical td:nth-child(2),tr.warning td:nth-child(2){color:#b45309;font-weight:700}' +
+    '.bar{margin:0 0 14px}.bar button{font:inherit;padding:8px 14px;margin-right:8px;border:1px solid #94a3b8;border-radius:8px;background:#fff;cursor:pointer}@media print{.bar{display:none}}' +
+    '.logo{height:46px}';
+  const mail = 'mailto:?subject=' + encodeURIComponent('Service needed — ' + list.length + ' AutoForce unit(s)') + '&body=' + encodeURIComponent(fleetServiceText());
+  w.document.write('<!doctype html><html><head><meta charset=utf-8><title>Service list — ' + esc(todayISO()) + '</title><style>' + css + '</style></head><body>' +
+    '<div class="bar"><button onclick="print()">🖨 Print / Save PDF</button><a href="' + esc(mail) + '"><button>✉️ Email to lease / shop</button></a></div>' +
+    (typeof AF_LOGO !== 'undefined' ? '<img class="logo" src="' + AF_LOGO + '" alt="U.S. AutoForce">' : '') +
+    '<h1>Service Needed — ' + list.length + ' unit(s)</h1><p>Generated ' + esc(fmtDate(todayISO())) + ' · overdue first, then due within 30 days, then units with no service date on file.</p>' +
+    '<table><tr><th>Unit</th><th>Status</th><th>Service due</th><th>Or at miles</th><th>Year / Make / Model</th><th>Plate</th><th>VIN</th><th>Location</th></tr>' + rows + '</table></body></html>');
+  w.document.close();
 }
 
 function renderAttentionInbox(view) {
@@ -1222,11 +2058,19 @@ function renderAttentionInbox(view) {
       });
       continue;
     }
-    for (const c of fleetServiceOverdue(u)) {
-      items.push({
-        icon: '🔧', title: 'Unit ' + u.unit + ' — SERVICE OVERDUE',
-        sub: c.text + ' · schedule it before it becomes a breakdown',
-        cls: 'danger', go: () => renderFleetView(u.unit),
+    const gsc = gradeScore(inspLatest(u));
+    if (gsc && gsc.fails.length) items.push({
+      icon: '📋', title: 'Unit ' + u.unit + ' — failed inspection: ' + gsc.fails.map((x) => x.short).join(', '),
+      sub: 'Grade ' + gsc.label + ' on ' + fmtDate(inspLatest(u).date) + (inspLatest(u).driver ? ' · driver ' + inspLatest(u).driver : ''),
+      cls: 'warn', go: () => { fleetWalkUnit = u; renderFleetWalk(); },
+    });
+    if (winterShown()) {
+      const ws = winterStatus(u);
+      const soft = ws.missing.filter((x) => !x.grounds);
+      if (soft.length) items.push({
+        icon: '❄️', title: 'Unit ' + u.unit + ' — winter kit missing ' + soft.map((x) => x.short).join(', '),
+        sub: 'Restock before it goes out — see the Winter restock list on the Fleet screen.',
+        cls: 'mild', go: () => { fleetWalkUnit = u; renderFleetWalk(); },
       });
     }
     for (const c of fleetDueSoon(u)) {
@@ -1236,6 +2080,15 @@ function renderAttentionInbox(view) {
         cls: c.status === 'critical' ? 'warn' : 'mild', go: () => renderFleetView(u.unit),
       });
     }
+  }
+
+  if (winterShown() && fleet.length) {
+    const notYet = fleet.filter((u) => !winterStatus(u).checked);
+    if (notYet.length) items.push({
+      icon: '❄️', title: notYet.length + ' truck(s) — winter kit not checked yet this season',
+      sub: 'Unit ' + notYet.map((u) => u.unit).slice(0, 12).join(', ') + (notYet.length > 12 ? '…' : '') + ' · open the Walk-Through',
+      cls: 'mild', go: () => { fleetWalkUnit = notYet[0]; renderFleetWalk(); },
+    });
   }
 
   const allCerts = [];
@@ -1474,7 +2327,7 @@ function sanitizeImport(field, arr) {
       c.unit = String(c.unit == null ? '' : c.unit).trim();
       if (!c.unit) continue;
       if (!c.id) c.id = uid();
-      for (const k of ['plate', 'make', 'vin', 'warehouse', 'notes', 'lastInspection', 'regExp', 'insExp', 'serviceDue', 'serviceMiles']) {
+      for (const k of ['plate', 'make', 'vin', 'warehouse', 'notes', 'lastInspection', 'regExp', 'insExp', 'serviceDue', 'serviceMiles', 'walkedAt', 'driver']) {
         if (c[k] !== undefined && c[k] !== null && typeof c[k] !== 'string') c[k] = String(c[k]);
       }
     } else if (field !== 'roster') {
@@ -1641,6 +2494,7 @@ function driverNames() {
   for (const t of trainees) if (t.name) names.add(t.name);
   for (const d of drivers) if (d.name) names.add(d.name);
   for (const p of paceEvals) if (p.driver) names.add(p.driver);
+  for (const n of gradedDriverNames()) names.add(n);
   return [...names].sort();
 }
 
@@ -1769,6 +2623,27 @@ function renderDossierFor(name, body) {
     }
   }
   report.appendChild(paceSec);
+
+  const dg = driverGrade(name);
+  const insSec = sec('Truck Inspections' + (dg ? ' — average ' + dg.letter + ' (' + dg.avg + '%)' : ' (0)'));
+  if (!dg) insSec.appendChild(el('p', { class: 'rsub' }, ['No truck inspections on file.']));
+  else {
+    const tbl = el('table', { class: 'rtbl' });
+    const head = el('tr', {});
+    for (const h of ['Date', 'Truck', 'Grade', 'Failed / needs attention']) head.appendChild(el('th', {}, [h]));
+    tbl.appendChild(head);
+    for (const x of dg.list.slice().reverse()) {
+      tbl.appendChild(el('tr', {}, [
+        el('td', {}, [fmtDate(x.rec.date)]),
+        el('td', {}, ['Unit ' + x.u.unit]),
+        el('td', {}, [x.sc.label]),
+        el('td', {}, [x.sc.fails.map((i) => 'FAIL ' + i.short).concat(x.sc.attn.map((i) => i.short)).join(', ') || '—']),
+      ]));
+    }
+    insSec.appendChild(tbl);
+    if (dg.repeat.length) insSec.appendChild(el('p', { class: 'rsub' }, ['Repeat problems: ' + dg.repeat.join(', ')]));
+  }
+  report.appendChild(insSec);
 
   report.appendChild(el('div', { class: 'pace-rfoot' }, [
     el('div', { class: 'sigbox ns' }, ['Prepared By Signature']),

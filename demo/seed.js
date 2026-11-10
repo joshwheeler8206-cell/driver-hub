@@ -2141,7 +2141,91 @@ var __SEED_DBS__ = {
 "insExp": "2027-04-19",
 "serviceDue": "2026-12-25",
 "serviceMiles": "128,000",
-"notes": ""
+"notes": "",
+"driver": "Marcus Reed",
+"inspections": [
+{
+"id": "i28Ma",
+"date": "2026-10-13",
+"at": "2026-10-13T15:00:00.000Z",
+"driver": "Marcus Reed",
+"ratings": {
+"cab": "attn",
+"exterior": "good",
+"glass": "good",
+"lights": "good",
+"horn": "good",
+"tires": "good",
+"brakes": "good",
+"oil": "good",
+"coolant": "good",
+"washer": "good",
+"belts": "good",
+"leaks": "good",
+"paperwork": "good",
+"triangles": "good"
+},
+"note": ""
+},
+{
+"id": "i14Ma",
+"date": "2026-10-27",
+"at": "2026-10-27T15:00:00.000Z",
+"driver": "Marcus Reed",
+"ratings": {
+"cab": "attn",
+"exterior": "good",
+"glass": "good",
+"lights": "good",
+"horn": "good",
+"tires": "good",
+"brakes": "good",
+"oil": "good",
+"coolant": "good",
+"washer": "attn",
+"belts": "good",
+"leaks": "good",
+"paperwork": "good",
+"triangles": "good"
+},
+"note": ""
+},
+{
+"id": "i1Ma",
+"date": "2026-11-09",
+"at": "2026-11-09T15:00:00.000Z",
+"driver": "Marcus Reed",
+"ratings": {
+"cab": "fail",
+"exterior": "good",
+"glass": "good",
+"lights": "good",
+"horn": "good",
+"tires": "good",
+"brakes": "good",
+"oil": "good",
+"coolant": "good",
+"washer": "good",
+"belts": "good",
+"leaks": "good",
+"paperwork": "good",
+"triangles": "good"
+},
+"note": ""
+}
+],
+"winter": {
+"season": "2026-27",
+"items": {
+"cord": "ok",
+"additive": "ok",
+"blankets": "missing",
+"extinguisher": "ok",
+"firstaid": "ok",
+"scraper": "missing"
+},
+"at": "2026-11-09T15:00:00.000Z"
+}
 },
 {
 "id": "u2",
@@ -2155,7 +2239,68 @@ var __SEED_DBS__ = {
 "insExp": "2027-04-19",
 "serviceDue": "2026-11-30",
 "serviceMiles": "",
-"notes": "Inspection booked at Rush Truck Center"
+"notes": "Inspection booked at Rush Truck Center",
+"driver": "Alicia Santos",
+"inspections": [
+{
+"id": "i21Al",
+"date": "2026-10-20",
+"at": "2026-10-20T15:00:00.000Z",
+"driver": "Alicia Santos",
+"ratings": {
+"cab": "good",
+"exterior": "good",
+"glass": "good",
+"lights": "good",
+"horn": "good",
+"tires": "good",
+"brakes": "good",
+"oil": "good",
+"coolant": "good",
+"washer": "good",
+"belts": "good",
+"leaks": "good",
+"paperwork": "good",
+"triangles": "good"
+},
+"note": ""
+},
+{
+"id": "i2Al",
+"date": "2026-11-08",
+"at": "2026-11-08T15:00:00.000Z",
+"driver": "Alicia Santos",
+"ratings": {
+"cab": "good",
+"exterior": "good",
+"glass": "good",
+"lights": "good",
+"horn": "good",
+"tires": "good",
+"brakes": "good",
+"oil": "attn",
+"coolant": "good",
+"washer": "good",
+"belts": "good",
+"leaks": "good",
+"paperwork": "good",
+"triangles": "good"
+},
+"note": ""
+}
+],
+"winter": {
+"season": "2026-27",
+"items": {
+"cord": "ok",
+"additive": "ok",
+"blankets": "ok",
+"extinguisher": "ok",
+"firstaid": "ok",
+"scraper": "ok"
+},
+"at": "2026-11-09T15:00:00.000Z"
+}
 },
 {
 "id": "u3",
@@ -2169,7 +2314,33 @@ var __SEED_DBS__ = {
 "insExp": "2027-04-19",
 "serviceDue": "2027-01-19",
 "serviceMiles": "",
-"notes": ""
+"notes": "",
+"driver": "Darrell Whitfield",
+"inspections": [
+{
+"id": "i3Da",
+"date": "2026-11-07",
+"at": "2026-11-07T15:00:00.000Z",
+"driver": "Darrell Whitfield",
+"ratings": {
+"cab": "good",
+"exterior": "good",
+"glass": "attn",
+"lights": "good",
+"horn": "good",
+"tires": "fail",
+"brakes": "good",
+"oil": "good",
+"coolant": "good",
+"washer": "good",
+"belts": "good",
+"leaks": "good",
+"paperwork": "good",
+"triangles": "good"
+},
+"note": ""
+}
+]
 },
 {
 "id": "u4",
@@ -2197,7 +2368,45 @@ var __SEED_DBS__ = {
 "insExp": "2027-04-19",
 "serviceDue": "2027-02-03",
 "serviceMiles": "",
-"notes": ""
+"notes": "",
+"driver": "Kyle Osei",
+"inspections": [
+{
+"id": "i5Ky",
+"date": "2026-11-05",
+"at": "2026-11-05T15:00:00.000Z",
+"driver": "Kyle Osei",
+"ratings": {
+"cab": "good",
+"exterior": "good",
+"glass": "good",
+"lights": "good",
+"horn": "good",
+"tires": "good",
+"brakes": "good",
+"oil": "good",
+"coolant": "good",
+"washer": "good",
+"belts": "good",
+"leaks": "good",
+"paperwork": "good",
+"triangles": "good"
+},
+"note": ""
+}
+],
+"winter": {
+"season": "2026-27",
+"items": {
+"cord": "ok",
+"additive": "missing",
+"blankets": "ok",
+"extinguisher": "ok",
+"firstaid": "ok",
+"scraper": "ok"
+},
+"at": "2026-11-09T15:00:00.000Z"
+}
 }
 ]
 }
