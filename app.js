@@ -2070,13 +2070,13 @@ function openFleetServiceList() {
   w.document.close();
 }
 
-function renderAttentionInbox(view) {
+function collectAttentionItems() {
   const items = [];
 
   for (const u of fleetSorted()) {
     const probs = fleetProblems(u);
     if (probs.length) {
-      items.push({
+      items.push({ kind: 'fleet',
         icon: '🚫', title: 'Unit ' + u.unit + ' — OUT OF SERVICE, do not put on the road',
         sub: probs.map((c) => c.item.short + ': ' + c.text).join(' · '),
         cls: 'danger', go: () => renderFleetView(u.unit),
@@ -2084,7 +2084,7 @@ function renderAttentionInbox(view) {
       continue;
     }
     const gsc = gradeScore(inspLatest(u));
-    if (gsc && gsc.fails.length) items.push({
+    if (gsc && gsc.fails.length) items.push({ kind: 'fleet',
       icon: '📋', title: 'Unit ' + u.unit + ' — failed inspection: ' + gsc.fails.map((x) => x.short).join(', '),
       sub: 'Grade ' + gsc.label + ' on ' + fmtDate(inspLatest(u).date) + (inspLatest(u).driver ? ' · driver ' + inspLatest(u).driver : ''),
       cls: 'warn', go: () => { fleetWalkUnit = u; renderFleetWalk(); },
@@ -2092,14 +2092,14 @@ function renderAttentionInbox(view) {
     if (winterShown()) {
       const ws = winterStatus(u);
       const soft = ws.missing.filter((x) => !x.grounds);
-      if (soft.length) items.push({
+      if (soft.length) items.push({ kind: 'fleet',
         icon: '❄️', title: 'Unit ' + u.unit + ' — winter kit missing ' + soft.map((x) => x.short).join(', '),
         sub: 'Restock before it goes out — see the Winter restock list on the Fleet screen.',
         cls: 'mild', go: () => { fleetWalkUnit = u; renderFleetWalk(); },
       });
     }
     for (const c of fleetDueSoon(u)) {
-      items.push({
+      items.push({ kind: 'fleet',
         icon: c.item.due ? '🔧' : '🚛', title: 'Unit ' + u.unit + ' — ' + c.item.short + (c.item.annual || c.item.due ? ' due soon' : ' expiring'),
         sub: CERT_STATUS_META[c.status].label + ' · ' + c.text,
         cls: c.status === 'critical' ? 'warn' : 'mild', go: () => renderFleetView(u.unit),
@@ -2109,7 +2109,7 @@ function renderAttentionInbox(view) {
 
   if (winterShown() && fleet.length) {
     const notYet = fleet.filter((u) => !winterStatus(u).checked);
-    if (notYet.length) items.push({
+    if (notYet.length) items.push({ kind: 'fleet',
       icon: '❄️', title: notYet.length + ' truck(s) — winter kit not checked yet this season',
       sub: 'Unit ' + notYet.map((u) => u.unit).slice(0, 12).join(', ') + (notYet.length > 12 ? '…' : '') + ' · open the Walk-Through',
       cls: 'mild', go: () => { fleetWalkUnit = notYet[0]; renderFleetWalk(); },
@@ -2121,7 +2121,7 @@ function renderAttentionInbox(view) {
   for (const { driver, cert } of allCerts) {
     const st = certStatus(cert);
     if (st === 'expired' || st === 'critical' || st === 'warning') {
-      items.push({
+      items.push({ kind: 'driver',
         icon: '🪪', title: (driver.name || 'driver') + ' — ' + cert.label,
         sub: CERT_STATUS_META[st].label + ' · ' + daysText(cert),
         cls: st === 'expired' ? 'danger' : st === 'critical' ? 'warn' : 'mild',
@@ -2132,7 +2132,7 @@ function renderAttentionInbox(view) {
 
   const pacedue = paceEvals.filter((p) => p.nextPaceDate && p.nextPaceDate <= todayISO());
   for (const p of pacedue) {
-    items.push({
+    items.push({ kind: 'driver',
       icon: '⏱️', title: (p.driver || p.evaluator || 'driver') + ' — PACE drive due',
       sub: 'Next PACE was ' + p.nextPaceDate,
       cls: 'warn',
@@ -2144,14 +2144,14 @@ function renderAttentionInbox(view) {
   for (const t of active) {
     ensureProcess(t);
     const p = trainProgressOf(t);
-    items.push({
+    items.push({ kind: 'driver',
       icon: '🎓', title: t.name + ' — ' + p.pct + '% trained',
       sub: trainStatusOf(t).replace('-', ' ') + (t.trainer ? ' · Trainer: ' + t.trainer : ''),
       cls: p.pct >= 80 ? 'mild' : '',
       go: () => { switchTab('training'); openTrainee(t.id); },
     });
     if (onRoad(t) && !phaseItemsDone(t, 'p1')) {
-      items.push({
+      items.push({ kind: 'driver',
         icon: '🚫', title: t.name + ' — on the road with an INCOMPLETE driver file',
         sub: 'Finish "Day 1–2 · Driver File & LMS" (LMS modules, DQ file, road test) before more road training.',
         cls: 'danger',
@@ -2163,7 +2163,7 @@ function renderAttentionInbox(view) {
   for (const t of releasedAll) {
     ensureProcess(t);
     if (!phaseItemsDone(t, 'p1')) {
-      items.push({
+      items.push({ kind: 'driver',
         icon: '⚠️', title: t.name + ' — released WITHOUT a complete driver file',
         sub: 'Fix the Day 1–2 file (LMS / DQ file / road test) before they drive.',
         cls: 'danger',
@@ -2172,23 +2172,83 @@ function renderAttentionInbox(view) {
     }
   }
 
+  return items;
+}
+
+// Critical = red items (out of service, expired, released without a file).
+// Everything else lands under Needs Attention (yellow).
+function splitAttention(items) {
+  return {
+    critical: items.filter((it) => it.cls === 'danger'),
+    attention: items.filter((it) => it.cls !== 'danger'),
+  };
+}
+
+// Home: two small tabs up top instead of the full alert list.
+function renderAttentionInbox(view) {
+  const g = splitAttention(collectAttentionItems());
+  const tab = (which, icon, label, n) => el('button', {
+    class: 'alert-tab ' + which + (n ? '' : ' zero'),
+    onclick: () => renderAlertsView(which),
+  }, [
+    el('span', { class: 'at-icon' }, [icon]),
+    el('span', { class: 'at-label' }, [label]),
+    el('span', { class: 'at-count' }, [String(n)]),
+  ]);
+  view.appendChild(el('div', { class: 'alert-tabs' }, [
+    tab('critical', '🚨', 'Critical', g.critical.length),
+    tab('attention', '⚠️', 'Needs Attention', g.attention.length),
+  ]));
+}
+
+function attnButton(it) {
+  return el('button', { class: 'attn ' + it.cls, onclick: it.go }, [
+    el('span', { class: 'attn-icon' }, [it.icon]),
+    el('span', { class: 'attn-body' }, [el('span', { class: 'attn-title' }, [it.title]), el('span', { class: 'attn-sub' }, [it.sub])]),
+    el('span', { class: 'attn-arrow' }, ['›']),
+  ]);
+}
+
+function renderAlertsView(which) {
+  which = which === 'attention' ? 'attention' : 'critical';
+  setAccent(which === 'critical' ? '#dc2626' : '#d97706');
+  homeSubview = 'alerts';
+  const view = document.getElementById('view');
+  view.innerHTML = '';
+  const g = splitAttention(collectAttentionItems());
+  view.appendChild(el('div', { class: 'route-head' }, [
+    el('button', { class: 'btn ghost small', onclick: () => renderHome() }, ['← Home']),
+  ]));
+  const tab = (w, icon, label) => el('button', {
+    class: 'alert-tab ' + w + (g[w].length ? '' : ' zero') + (w === which ? ' active' : ''),
+    onclick: () => renderAlertsView(w),
+  }, [
+    el('span', { class: 'at-icon' }, [icon]),
+    el('span', { class: 'at-label' }, [label]),
+    el('span', { class: 'at-count' }, [String(g[w].length)]),
+  ]);
+  view.appendChild(el('div', { class: 'alert-tabs' }, [
+    tab('critical', '🚨', 'Critical'),
+    tab('attention', '⚠️', 'Needs Attention'),
+  ]));
+  const items = g[which];
+  const title = which === 'critical' ? 'Critical (' + items.length + ')' : 'Needs Attention (' + items.length + ')';
   if (!items.length) {
     view.appendChild(el('div', { class: 'card' }, [
-      el('h2', { class: 'card-title' }, ['Needs Attention']),
-      el('div', { class: 'sc-clean' }, ['All clear — no expiring certs, out-of-service trucks, overdue PACE drives, or incomplete training.']),
+      el('h2', { class: 'card-title' }, [title]),
+      el('div', { class: 'sc-clean' }, [which === 'critical'
+        ? 'Nothing critical — no out-of-service trucks, expired certs, or drivers without a complete file.'
+        : 'All clear — nothing expiring soon, no PACE drives due, no open training.']),
     ]));
     return;
   }
-
-  const list = el('div', { class: 'card' }, [el('h2', { class: 'card-title' }, ['Needs Attention (' + items.length + ')'])]);
-  for (const it of items) {
-    list.appendChild(el('button', { class: 'attn ' + it.cls, onclick: it.go }, [
-      el('span', { class: 'attn-icon' }, [it.icon]),
-      el('span', { class: 'attn-body' }, [el('span', { class: 'attn-title' }, [it.title]), el('span', { class: 'attn-sub' }, [it.sub])]),
-      el('span', { class: 'attn-arrow' }, ['›']),
-    ]));
+  for (const [kind, label] of [['fleet', '🚛 Fleet Vehicles'], ['driver', '👤 Drivers']]) {
+    const sect = items.filter((it) => it.kind === kind);
+    if (!sect.length) continue;
+    const card = el('div', { class: 'card' }, [el('h2', { class: 'card-title' }, [label + ' (' + sect.length + ')'])]);
+    for (const it of sect) card.appendChild(attnButton(it));
+    view.appendChild(card);
   }
-  view.appendChild(list);
 }
 
 function dashCard(icon, title, num, sub, onclick) {

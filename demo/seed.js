@@ -2136,18 +2136,18 @@ var __SEED_DBS__ = {
 "make": "2021 Freightliner M2 106",
 "vin": "3ALACWFC5MDMX4121",
 "warehouse": "OKC North",
-"lastInspection": "2026-07-13",
-"regExp": "2027-06-08",
-"insExp": "2027-04-19",
-"serviceDue": "2026-12-25",
+"lastInspection": "2026-07-14",
+"regExp": "2027-06-09",
+"insExp": "2027-04-20",
+"serviceDue": "2026-12-26",
 "serviceMiles": "128,000",
 "notes": "",
 "driver": "Marcus Reed",
 "inspections": [
 {
 "id": "i28Ma",
-"date": "2026-10-13",
-"at": "2026-10-13T15:00:00.000Z",
+"date": "2026-10-14",
+"at": "2026-10-14T15:00:00.000Z",
 "driver": "Marcus Reed",
 "ratings": {
 "cab": "attn",
@@ -2169,8 +2169,8 @@ var __SEED_DBS__ = {
 },
 {
 "id": "i14Ma",
-"date": "2026-10-27",
-"at": "2026-10-27T15:00:00.000Z",
+"date": "2026-10-28",
+"at": "2026-10-28T15:00:00.000Z",
 "driver": "Marcus Reed",
 "ratings": {
 "cab": "attn",
@@ -2192,8 +2192,8 @@ var __SEED_DBS__ = {
 },
 {
 "id": "i1Ma",
-"date": "2026-11-09",
-"at": "2026-11-09T15:00:00.000Z",
+"date": "2026-11-10",
+"at": "2026-11-10T15:00:00.000Z",
 "driver": "Marcus Reed",
 "ratings": {
 "cab": "fail",
@@ -2224,7 +2224,7 @@ var __SEED_DBS__ = {
 "firstaid": "ok",
 "scraper": "missing"
 },
-"at": "2026-11-09T15:00:00.000Z"
+"at": "2026-11-10T15:00:00.000Z"
 }
 },
 {
@@ -2234,18 +2234,18 @@ var __SEED_DBS__ = {
 "make": "2019 Isuzu NPR-HD",
 "vin": "JALC4W162K7004150",
 "warehouse": "OKC North",
-"lastInspection": "2025-11-04",
-"regExp": "2027-02-13",
-"insExp": "2027-04-19",
-"serviceDue": "2026-11-30",
+"lastInspection": "2025-11-05",
+"regExp": "2027-02-14",
+"insExp": "2027-04-20",
+"serviceDue": "2026-12-01",
 "serviceMiles": "",
 "notes": "Inspection booked at Rush Truck Center",
 "driver": "Alicia Santos",
 "inspections": [
 {
 "id": "i21Al",
-"date": "2026-10-20",
-"at": "2026-10-20T15:00:00.000Z",
+"date": "2026-10-21",
+"at": "2026-10-21T15:00:00.000Z",
 "driver": "Alicia Santos",
 "ratings": {
 "cab": "good",
@@ -2267,8 +2267,8 @@ var __SEED_DBS__ = {
 },
 {
 "id": "i2Al",
-"date": "2026-11-08",
-"at": "2026-11-08T15:00:00.000Z",
+"date": "2026-11-09",
+"at": "2026-11-09T15:00:00.000Z",
 "driver": "Alicia Santos",
 "ratings": {
 "cab": "good",
@@ -2299,7 +2299,7 @@ var __SEED_DBS__ = {
 "firstaid": "ok",
 "scraper": "ok"
 },
-"at": "2026-11-09T15:00:00.000Z"
+"at": "2026-11-10T15:00:00.000Z"
 }
 },
 {
@@ -2309,18 +2309,18 @@ var __SEED_DBS__ = {
 "make": "2022 Hino 268A",
 "vin": "5PVNJ8JV4N4S42001",
 "warehouse": "Tulsa Yard",
-"lastInspection": "2026-04-24",
-"regExp": "2026-11-21",
-"insExp": "2027-04-19",
-"serviceDue": "2027-01-19",
+"lastInspection": "2026-04-25",
+"regExp": "2026-11-22",
+"insExp": "2027-04-20",
+"serviceDue": "2027-01-20",
 "serviceMiles": "",
 "notes": "",
 "driver": "Darrell Whitfield",
 "inspections": [
 {
 "id": "i3Da",
-"date": "2026-11-07",
-"at": "2026-11-07T15:00:00.000Z",
+"date": "2026-11-08",
+"at": "2026-11-08T15:00:00.000Z",
 "driver": "Darrell Whitfield",
 "ratings": {
 "cab": "good",
@@ -2349,10 +2349,10 @@ var __SEED_DBS__ = {
 "make": "2020 International MV607",
 "vin": "1HTEUMML3LH431002",
 "warehouse": "Dallas Metro",
-"lastInspection": "2026-09-11",
-"regExp": "2027-09-06",
-"insExp": "2027-04-19",
-"serviceDue": "2026-11-04",
+"lastInspection": "2026-09-12",
+"regExp": "2027-09-07",
+"insExp": "2027-04-20",
+"serviceDue": "2026-11-05",
 "serviceMiles": "96,500",
 "notes": ""
 },
@@ -2363,18 +2363,18 @@ var __SEED_DBS__ = {
 "make": "2023 Freightliner M2 106",
 "vin": "3ALACWFC1PDNX4380",
 "warehouse": "OKC North",
-"lastInspection": "2026-10-11",
-"regExp": "2027-10-06",
-"insExp": "2027-04-19",
-"serviceDue": "2027-02-03",
+"lastInspection": "2026-10-12",
+"regExp": "2027-10-07",
+"insExp": "2027-04-20",
+"serviceDue": "2027-02-04",
 "serviceMiles": "",
 "notes": "",
 "driver": "Kyle Osei",
 "inspections": [
 {
 "id": "i5Ky",
-"date": "2026-11-05",
-"at": "2026-11-05T15:00:00.000Z",
+"date": "2026-11-06",
+"at": "2026-11-06T15:00:00.000Z",
 "driver": "Kyle Osei",
 "ratings": {
 "cab": "good",
@@ -2405,7 +2405,7 @@ var __SEED_DBS__ = {
 "firstaid": "ok",
 "scraper": "ok"
 },
-"at": "2026-11-09T15:00:00.000Z"
+"at": "2026-11-10T15:00:00.000Z"
 }
 }
 ]
