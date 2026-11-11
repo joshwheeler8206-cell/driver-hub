@@ -883,6 +883,16 @@ function rosterCard(r) {
       if (old !== nn) {
         const d = certsDriverByName(old);
         if (d) d.name = nn;   // keep the cert tracker entry on the same driver
+        // keep truck assignments + inspection history on the same driver too
+        const lo = String(old || '').trim().toLowerCase();
+        let moved = false;
+        for (const u of fleet) {
+          if (String(u.driver || '').trim().toLowerCase() === lo) { u.driver = nn; moved = true; }
+          for (const rec of (Array.isArray(u.inspections) ? u.inspections : [])) {
+            if (String(rec.driver || '').trim().toLowerCase() === lo) { rec.driver = nn; moved = true; }
+          }
+        }
+        if (moved) persist(FLEET_DB, FLEET_KEY, fleet);
       }
       save();
       syncRosterCerts(r);
@@ -1145,10 +1155,16 @@ function gradeScore(rec) {
   return { pct, raw, capped, letter, label, rated: Object.keys(r).filter((k) => r[k]).length, total: GRADE_ITEMS.length, fails, attn };
 }
 
-function inspLatest(u) { const l = u.inspections || []; return l.length ? l[l.length - 1] : null; }
+function inspLatest(u) {
+  const l = Array.isArray(u.inspections) ? u.inspections : [];
+  let best = null;
+  for (const x of l) if (x && (!best || String(x.date || '') + String(x.at || '') >= String(best.date || '') + String(best.at || ''))) best = x;
+  return best;
+}
 function inspToday(u, create) {
   const t = todayISO();
-  const l = u.inspections || (create ? (u.inspections = []) : []);
+  if (!Array.isArray(u.inspections)) { if (!create) return null; u.inspections = []; }
+  const l = u.inspections;
   let rec = l.find((x) => x.date === t);
   if (!rec && create) { rec = { id: uid(), date: t, at: new Date().toISOString(), driver: u.driver || '', ratings: {}, note: '' }; l.push(rec); }
   return rec || null;
@@ -1687,7 +1703,8 @@ function fleetParseSpeech(text, todayIso) {
   let body = s;
   const nm = /\bnotes?\b[:\s]+(.*)$/.exec(s);
   if (nm) { out.note = raw.slice(raw.length - nm[1].length).trim(); body = s.slice(0, nm.index); }
-  const um = /\b(?:unit|truck|tractor|trailer|number)\s*(?:number\s*)?#?\s*([a-z]{0,3}-?\d[\w-]*)/.exec(body);
+  // "number" alone is NOT a unit keyword ("plate number 7PL904" must not become a unit)
+  const um = /\b(?:unit|truck|tractor|trailer)\s*(?:number\s*)?#?\s*([a-z]{0,3}-?\d[\w-]*)/.exec(body);
   if (um) { out.unit = um[1].toUpperCase(); body = body.replace(um[0], ' '); }
   const mi = /\b(?:at\s+)?(\d[\d,]{2,})\s*(?:miles|mi)\b/.exec(body);
   if (mi) { out.miles = Number(mi[1].replace(/,/g, '')).toLocaleString('en-US'); body = body.replace(mi[0], ' '); }
@@ -2259,8 +2276,9 @@ function runAutoBackup() {
   _abLast = now;
   _abCount++;
   try {
-    if (!evals.length && !trainees.length && !drivers.length && !paceEvals.length && !routes.length && !roster.length) return;
-    const ts = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '');
+    if (!evals.length && !trainees.length && !drivers.length && !paceEvals.length && !routes.length && !roster.length && !fleet.length) return;
+    const nd = new Date();
+    const ts = todayISO() + '_' + String(nd.getHours()).padStart(2, '0') + String(nd.getMinutes()).padStart(2, '0');   // local time
     download('autoforce-auto-' + ts + '.json', JSON.stringify(backupPayload(), null, 2));
   } catch (e) {}
 }
@@ -2297,6 +2315,22 @@ function readBackup(obj) {
 // Merge/sync = keep everything already here, add new records AND update
 // matching ones to the file's version. Never deletes anything on this device.
 // Replace = the file wins outright.
+// A truck's HISTORY must never be lost to an older file: the file's version of the
+// unit's details wins (like every other record), but inspections are combined by
+// id, and the newer winter check / walk-through stamp is kept from either side.
+function mergeFleetUnit(cur, inc) {
+  const out = { ...cur, ...inc };
+  const byId = new Map();
+  for (const x of [...(Array.isArray(cur.inspections) ? cur.inspections : []), ...(Array.isArray(inc.inspections) ? inc.inspections : [])]) {
+    if (x && x.id) byId.set(x.id, x);
+  }
+  if (byId.size) out.inspections = [...byId.values()].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.at || '').localeCompare(String(b.at || '')));
+  const newer = (a, b) => (String((a && a.at) || '') >= String((b && b.at) || '') ? a : b);
+  if (cur.winter || inc.winter) out.winter = !cur.winter ? inc.winter : !inc.winter ? cur.winter : newer(cur.winter, inc.winter);
+  if (cur.walkedAt || inc.walkedAt) out.walkedAt = String(cur.walkedAt || '') > String(inc.walkedAt || '') ? cur.walkedAt : inc.walkedAt;
+  return out;
+}
+
 function mergeStore(field, incoming, existing) {
   if (!Array.isArray(incoming)) return { out: Array.isArray(existing) ? existing : [], added: 0, updated: 0 };
   if (!Array.isArray(existing)) return { out: incoming.slice(), added: incoming.length, updated: 0 };
@@ -2313,9 +2347,12 @@ function mergeStore(field, incoming, existing) {
     const cur = byKey.get(k);
     if (cur === undefined) {
       out.push(r); byKey.set(k, r); added++;
-    } else if (JSON.stringify(cur) !== JSON.stringify(r)) {
-      const idx = out.indexOf(cur);
-      out[idx] = r; byKey.set(k, r); updated++;
+    } else {
+      const next = field === 'fleet' ? mergeFleetUnit(cur, r) : r;
+      if (JSON.stringify(cur) !== JSON.stringify(next)) {
+        const idx = out.indexOf(cur);
+        out[idx] = next; byKey.set(k, next); updated++;
+      }
     }
   }
   return { out, added, updated };
@@ -2338,6 +2375,11 @@ function sanitizeImport(field, arr) {
       for (const k of ['plate', 'make', 'vin', 'warehouse', 'notes', 'lastInspection', 'regExp', 'insExp', 'serviceDue', 'serviceMiles', 'walkedAt', 'driver']) {
         if (c[k] !== undefined && c[k] !== null && typeof c[k] !== 'string') c[k] = String(c[k]);
       }
+      c.inspections = (Array.isArray(c.inspections) ? c.inspections : [])
+        .filter((x) => x && typeof x === 'object' && !Array.isArray(x))
+        .map((x) => ({ ...x, id: x.id || uid(), date: String(x.date || ''), driver: String(x.driver || ''), ratings: (x.ratings && typeof x.ratings === 'object') ? x.ratings : {} }));
+      if (!c.inspections.length) delete c.inspections;
+      if (c.winter && (typeof c.winter !== 'object' || !c.winter.items || typeof c.winter.items !== 'object')) delete c.winter;
     } else if (field !== 'roster') {
       if (c.id === undefined || c.id === null || c.id === '') c.id = uid();
     } else {
@@ -4312,7 +4354,7 @@ function ensureSignoffs(tr) {
    ================================================================ */
 
 function auditId(prefix) {
-  const ymd = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const ymd = todayISO().replace(/-/g, '');   // local date (UTC is already tomorrow after ~6 pm)
   let rnd = '';
   for (let i = 0; i < 4; i++) rnd += '0123456789ABCDEF'[Math.floor(Math.random() * 16)];
   return 'AF-' + prefix + '-' + ymd + '-' + rnd;
