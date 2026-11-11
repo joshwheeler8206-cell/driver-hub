@@ -1065,7 +1065,7 @@ function winterProblems(u) {
   const items = (u.winter && u.winter.items) || {};
   return WINTER_ITEMS.filter((it) => it.grounds && items[it.key] === 'missing').map((it) => ({
     item: { short: it.label, label: it.label, prop: 'winter_' + it.key }, status: 'expired', due: '',
-    text: 'MISSING (winter check-off ' + fmtDate(String(u.winter.at || '').slice(0, 10)) + ')',
+    text: 'MISSING (winter check-off ' + fmtDate(localDateOf(u.winter.at)) + ')',
   }));
 }
 
@@ -1227,7 +1227,7 @@ function fleetGradeCard(u, onChange) {
   box.appendChild(el('div', { class: 'gr-sub' }, [sc ? sc.rated + ' of ' + sc.total + ' items rated' + (u.driver ? ' · driver: ' + u.driver : ' · no driver assigned') : 'Tap a rating for each item. Saves as you go.']));
   for (const it of GRADE_ITEMS) {
     const v = r[it.key] || '';
-    const b = (val, txt) => el('button', { class: 'gr-b ' + val + (v === val ? ' on' : ''), onclick: () => { inspRate(u, it.key, v === val ? '' : val); changed(); } }, [txt]);
+    const b = (val, txt) => el('button', { class: 'gr-b gr-' + val + (v === val ? ' on' : ''), onclick: () => { inspRate(u, it.key, v === val ? '' : val); changed(); } }, [txt]);
     box.appendChild(el('div', { class: 'gr-row' }, [
       el('span', { class: 'gr-l' }, [it.label + (it.grounds ? ' *' : '')]),
       el('span', { class: 'gr-btns' }, [b('good', 'Good'), b('attn', 'Attn'), b('fail', 'Fail'), b('na', 'N/A')]),
@@ -1571,7 +1571,7 @@ function fleetCard(u) {
     text('vin', 'VIN', '17 characters'),
     text('warehouse', 'Warehouse / Location', 'e.g. West Branch'),
     text('notes', 'Notes', 'Shop, permits, IFTA, etc.'),
-    u.walkedAt ? el('p', { class: 'sub', style: 'margin:4px 0 8px' }, ['Last walk-through check: ' + fmtDate(String(u.walkedAt).slice(0, 10))]) : null,
+    u.walkedAt ? el('p', { class: 'sub', style: 'margin:4px 0 8px' }, ['Last walk-through check: ' + fmtDate(localDateOf(u.walkedAt))]) : null,
     gradeScore(inspLatest(u)) ? el('p', { class: 'sub', style: 'margin:4px 0 8px' }, ['📋 Last grade: ' + gradeScore(inspLatest(u)).label + ' · ' + fmtDate(inspLatest(u).date) + (inspLatest(u).driver ? ' · ' + inspLatest(u).driver : '')]) : null,
     u.driver ? el('p', { class: 'sub', style: 'margin:4px 0 8px' }, ['👤 Assigned driver: ' + u.driver]) : null,
     winterShown() ? el('p', { class: 'sub fl-wline' + (winterStatus(u).missing.length ? ' bad' : '') , style: 'margin:4px 0 8px' }, ['❄️ Winter kit: ' + winterSummary(u)]) : null,
@@ -1599,7 +1599,7 @@ function exportFleetCsv() {
     const ch = fleetChecks(u);
     rows.push([u.unit, u.plate, u.make, u.vin, u.warehouse, u.lastInspection, ch[0].due, u.regExp, u.insExp, u.serviceDue, u.serviceMiles,
       fleetOutOfService(u) ? 'OUT OF SERVICE' : fleetDueSoon(u).length ? 'DUE SOON' : 'OK',
-      fleetProblems(u).map((c) => c.item.short + ': ' + c.text).join('; '), String(u.walkedAt || '').slice(0, 10), winterRec(u, false) ? winterSummary(u) : '', u.driver || '', gradeScore(inspLatest(u)) ? gradeScore(inspLatest(u)).label : '', u.notes]);
+      fleetProblems(u).map((c) => c.item.short + ': ' + c.text).join('; '), localDateOf(u.walkedAt), winterRec(u, false) ? winterSummary(u) : '', u.driver || '', gradeScore(inspLatest(u)) ? gradeScore(inspLatest(u)).label : '', u.notes]);
   }
   downloadCsv('fleet-roster-' + todayISO() + '.csv', rows);
 }
@@ -1759,7 +1759,15 @@ let fleetWalkUnit = null;   // unit currently being walked
 let fleetWalkUndo = null;   // { unit, before | null(created) }
 let fleetWalkLog = [];
 
-function fleetWalkedToday(u) { return String(u.walkedAt || '').slice(0, 10) === todayISO(); }
+// Timestamps are stored as UTC ISO strings; compare/print them in LOCAL time or
+// a truck checked after ~6 pm Central would count as "tomorrow".
+function localDateOf(isoTs) {
+  if (!isoTs) return '';
+  const d = new Date(isoTs);
+  if (isNaN(d)) return String(isoTs).slice(0, 10);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function fleetWalkedToday(u) { return localDateOf(u.walkedAt) === todayISO(); }
 
 // Apply a parsed sentence. Returns a short human summary.
 function fleetApplySpeech(text) {

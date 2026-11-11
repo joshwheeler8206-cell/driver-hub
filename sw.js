@@ -1,4 +1,4 @@
-const CACHE = 'driver-hub-v62';
+const CACHE = 'driver-hub-v63';
 const ASSETS = [
   './',
   './index.html',

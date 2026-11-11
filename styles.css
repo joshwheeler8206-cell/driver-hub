@@ -952,10 +952,10 @@ input.invalid, select.invalid, textarea.invalid { border-color: #dc2626 !importa
 .gr-l { font-size: 13px; font-weight: 600; color: var(--ink); flex: 1 1 130px; min-width: 0; }
 .gr-btns { display: flex; gap: 4px; flex-shrink: 0; }
 .gr-b { min-width: 48px; min-height: 36px; padding: 0 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); font-weight: 700; font-size: 12px; cursor: pointer; }
-.gr-b.good.on { background: #16a34a; border-color: #16a34a; color: #fff; }
-.gr-b.attn.on { background: #d97706; border-color: #d97706; color: #fff; }
-.gr-b.fail.on { background: #dc2626; border-color: #dc2626; color: #fff; }
-.gr-b.na.on { background: #64748b; border-color: #64748b; color: #fff; }
+.gr-b.gr-good.on { background: #16a34a; border-color: #16a34a; color: #fff; }
+.gr-b.gr-attn.on { background: #d97706; border-color: #d97706; color: #fff; }
+.gr-b.gr-fail.on { background: #dc2626; border-color: #dc2626; color: #fff; }
+.gr-b.gr-na.on { background: #64748b; border-color: #64748b; color: #fff; }
 .gr-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
 .gr-note { width: 100%; margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--ink); font: inherit; font-size: 13px; }
 .gr-driver { width: 100%; }
