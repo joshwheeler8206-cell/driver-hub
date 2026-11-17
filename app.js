@@ -1003,7 +1003,7 @@ function fleetChecks(u) {
 // Out of service = something expired or never entered. Reasons are spelled out.
 function fleetProblems(u) {
   return fleetChecks(u).filter((c) => c.status === 'expired' || (c.status === 'unknown' && !c.item.optional))
-    .concat(winterProblems(u)).concat(gradeProblems(u));
+    .concat(winterProblems(u)).concat(inspProblems(u));
 }
 function fleetOutOfService(u) { return fleetProblems(u).length > 0; }
 function fleetDueSoon(u) { return fleetChecks(u).filter((c) => c.status === 'critical' || c.status === 'warning'); }
@@ -1105,14 +1105,18 @@ function fleetWinterCard(u, onChange) {
   return box;
 }
 
-/* ---------- Truck inspection + grade ----------
+/* ---------- Truck inspection — PACE rating scale ----------
    One inspection per truck per day (u.inspections[], newest last), auto-saved as
-   items are rated. Good = 2, Needs attention = 1, Fail = 0, N/A not counted.
-   A = 90%+, B = 80%+, C = 70%+, D = 60%+, F below. A FAIL on a safety item
-   (grounds:true) puts the truck OUT OF SERVICE until a later rating clears it.
-   The truck's assigned driver (u.driver) is stamped on each inspection so the
-   grades roll up into a per-driver average, trend and repeat-problem flags. */
-const GRADE_ITEMS = [
+   items are rated. Each item is rated on the SAME scale as the PACE evaluation
+   (PACE_RATINGS / PACE_RATING_LABEL): 1 – Not Practiced, 2 – Somewhat Practiced,
+   3 – Always Practiced, or N/A (not counted). There is no letter or points score:
+   summaries use the PACE app's own measures — Not Practiced count, items rated,
+   and Always Practiced %. A 1 – Not Practiced on a safety item (grounds:true)
+   puts the truck OUT OF SERVICE until a later rating clears it. The truck's
+   assigned driver (u.driver) is stamped on each inspection so results roll up
+   per driver. Records saved before this change stored 'good'/'attn'/'fail';
+   inspVal() reads those as 3/2/1 so old history keeps working. */
+const INSP_ITEMS = [
   { key: 'cab', label: 'Cab clean & organized', short: 'cab', say: /\b(?:cab|inside|interior|floor ?boards?)\b/ },
   { key: 'exterior', label: 'Exterior / body clean', short: 'exterior', say: /\b(?:exterior|outside|body)\b/ },
   { key: 'glass', label: 'Windshield & mirrors', short: 'windshield & mirrors', say: /\b(?:windshield|windows?|mirrors?|glass)\b/ },
@@ -1128,31 +1132,40 @@ const GRADE_ITEMS = [
   { key: 'paperwork', label: 'Paperwork in cab (reg / insurance card)', short: 'paperwork', say: /\b(?:paperwork|papers|binder)\b/ },
   { key: 'triangles', label: 'Warning triangles', short: 'triangles', say: /\b(?:triangles?|reflectors?)\b/ },
 ];
-const GRADE_VALS = { good: 2, attn: 1, fail: 0 };
-const GRADE_LABEL = { good: 'Good', attn: 'Needs attention', fail: 'Fail', na: 'N/A' };
+const INSP_LEGACY = { good: 3, attn: 2, fail: 1 };
+// Normalised rating: 1 | 2 | 3 | 'na' | null.
+function inspVal(v) {
+  if (v === 'na') return 'na';
+  if (v in INSP_LEGACY) return INSP_LEGACY[v];
+  const n = Number(v);
+  return n === 1 || n === 2 || n === 3 ? n : null;
+}
+function inspRatingText(v) {
+  const n = inspVal(v);
+  return n === 'na' ? 'N/A' : n ? n + ' – ' + PACE_RATING_LABEL[n] : '';
+}
 
-function gradeLetter(pct) { return pct >= 90 ? 'A' : pct >= 80 ? 'B' : pct >= 70 ? 'C' : pct >= 60 ? 'D' : 'F'; }
-
-// { pct, letter, rated, total, fails[], attn[] } or null when nothing rated.
-function gradeScore(rec) {
+// { rated, total, np, sp, ap, apPct, safety, fails[], attn[], level, label } or null when nothing rated.
+// fails = items rated 1 – Not Practiced, attn = items rated 2 – Somewhat Practiced.
+function inspScore(rec) {
   const r = (rec && rec.ratings) || {};
-  let pts = 0, max = 0;
+  let np = 0, sp = 0, ap = 0;
   const fails = [], attn = [];
-  for (const it of GRADE_ITEMS) {
-    const v = r[it.key];
-    if (!(v in GRADE_VALS)) continue;
-    pts += GRADE_VALS[v]; max += 2;
-    if (v === 'fail') fails.push(it); else if (v === 'attn') attn.push(it);
+  for (const it of INSP_ITEMS) {
+    const v = inspVal(r[it.key]);
+    if (v === 1) { np++; fails.push(it); } else if (v === 2) { sp++; attn.push(it); } else if (v === 3) ap++;
   }
-  if (!max) return null;
-  const raw = Math.round((pts / max) * 100);
-  // A failed SAFETY item caps the inspection at F (counted as 59% in averages) so
-  // the letter is never better than the truck actually is.
-  const capped = fails.some((it) => it.grounds);
-  const pct = capped ? Math.min(raw, 59) : raw;
-  const letter = gradeLetter(pct);
-  const label = capped ? 'F · safety fail' : letter + ' · ' + pct + '%';
-  return { pct, raw, capped, letter, label, rated: Object.keys(r).filter((k) => r[k]).length, total: GRADE_ITEMS.length, fails, attn };
+  const rated = np + sp + ap;
+  if (!rated) return null;
+  const apPct = Math.round((ap / rated) * 100);
+  const safety = fails.some((it) => it.grounds);
+  const level = np ? 1 : sp ? 2 : 3;
+  const label = (safety ? 'Safety item Not Practiced · ' : np ? np + ' Not Practiced · ' : '') + apPct + '% Always Practiced';
+  return { rated, total: INSP_ITEMS.length, np, sp, ap, apPct, safety, fails, attn, level, label };
+}
+// Worst first: safety Not Practiced, then most Not Practiced, then lowest Always Practiced %.
+function inspCompare(a, b) {
+  return (b.safety - a.safety) || (b.np - a.np) || (a.apPct - b.apPct);
 }
 
 function inspLatest(u) {
@@ -1171,24 +1184,25 @@ function inspToday(u, create) {
 }
 function inspRate(u, key, val) {
   const rec = inspToday(u, true);
-  if (val) rec.ratings[key] = val; else delete rec.ratings[key];
+  const v = val ? inspVal(val) : null;
+  if (v) rec.ratings[key] = v; else delete rec.ratings[key];
   rec.driver = u.driver || rec.driver || '';
   rec.at = new Date().toISOString();
 }
 
-// Safety fails on the latest inspection ground the truck.
-function gradeProblems(u) {
+// 1 – Not Practiced on a safety item (latest inspection) grounds the truck.
+function inspProblems(u) {
   const rec = inspLatest(u);
   if (!rec) return [];
-  return GRADE_ITEMS.filter((it) => it.grounds && rec.ratings[it.key] === 'fail').map((it) => ({
-    item: { short: it.label, label: it.label, prop: 'grade_' + it.key }, status: 'expired', due: '',
-    text: 'FAILED inspection ' + fmtDate(rec.date),
+  return INSP_ITEMS.filter((it) => it.grounds && inspVal(rec.ratings[it.key]) === 1).map((it) => ({
+    item: { short: it.label, label: it.label, prop: 'insp_' + it.key }, status: 'expired', due: '',
+    text: 'rated 1 – Not Practiced on inspection ' + fmtDate(rec.date),
   }));
 }
 
-function gradeBadge(sc) {
+function inspBadge(sc) {
   if (!sc) return el('span', { class: 'gr-badge none' }, ['—']);
-  return el('span', { class: 'gr-badge g' + sc.letter }, [sc.label || (sc.letter + ' · ' + sc.pct + '%')]);
+  return el('span', { class: 'gr-badge pr' + sc.level }, [sc.label]);
 }
 
 // Per-driver roll-up across every truck they were assigned on inspection day.
@@ -1197,21 +1211,29 @@ function driverInspections(name) {
   const out = [];
   if (!n) return out;
   for (const u of fleet) for (const rec of (u.inspections || [])) {
-    if (String(rec.driver || '').trim().toLowerCase() === n && gradeScore(rec)) out.push({ u, rec, sc: gradeScore(rec) });
+    const sc = inspScore(rec);
+    if (String(rec.driver || '').trim().toLowerCase() === n && sc) out.push({ u, rec, sc });
   }
   return out.sort((a, b) => String(a.rec.date).localeCompare(String(b.rec.date)));
 }
-function driverGrade(name) {
+function driverInspSummary(name) {
   const l = driverInspections(name);
   if (!l.length) return null;
-  const avg = Math.round(l.reduce((s, x) => s + x.sc.pct, 0) / l.length);
+  const rated = l.reduce((s, x) => s + x.sc.rated, 0);
+  const ap = l.reduce((s, x) => s + x.sc.ap, 0);
+  const np = l.reduce((s, x) => s + x.sc.np, 0);
+  const sp = l.reduce((s, x) => s + x.sc.sp, 0);
+  const apPct = Math.round((ap / rated) * 100);
+  const safety = l.some((x) => x.sc.safety);
   const last3 = l.slice(-3);
-  // repeat problems: an item marked attention/fail on 2+ of the last 3 inspections
-  const repeat = GRADE_ITEMS.map((it) => ({ it, n: last3.filter((x) => ['attn', 'fail'].includes(x.rec.ratings[it.key])).length }))
+  // repeat problems: an item rated 1 or 2 on 2+ of the last 3 inspections
+  const repeat = INSP_ITEMS.map((it) => ({ it, n: last3.filter((x) => [1, 2].includes(inspVal(x.rec.ratings[it.key]))).length }))
     .filter((x) => x.n >= 2).map((x) => x.it.short + ' (' + x.n + ' of last ' + last3.length + ')');
-  return { avg, letter: gradeLetter(avg), count: l.length, recent: l.slice(-5).map((x) => x.sc.letter), repeat, list: l };
+  const level = np ? 1 : sp ? 2 : 3;
+  const label = (np ? np + ' Not Practiced · ' : '') + apPct + '% Always Practiced';
+  return { apPct, np, sp, ap, rated, safety, level, label, count: l.length, recent: l.slice(-5).map((x) => x.sc.apPct + '%'), repeat, list: l };
 }
-function gradedDriverNames() {
+function inspectedDriverNames() {
   const s = new Set();
   for (const u of fleet) { if (u.driver) s.add(u.driver); for (const r of (u.inspections || [])) if (r.driver) s.add(r.driver); }
   return [...s].sort((a, b) => a.localeCompare(b));
@@ -1227,53 +1249,60 @@ function fleetDriverField(u, onChange) {
   sel.appendChild(el('option', { value: '' }, ['— No driver assigned —']));
   const all = names.includes(u.driver) || !u.driver ? names : [u.driver, ...names];
   for (const n of all) sel.appendChild(el('option', { value: n, selected: n === u.driver }, [n]));
-  return el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Assigned Driver (gets this truck\'s grades)']), sel]);
+  return el('div', { class: 'field' }, [el('span', { class: 'field-label' }, ['Assigned Driver (gets this truck\'s inspection ratings)']), sel]);
 }
 
-function fleetGradeCard(u, onChange) {
+function paceScaleLegend() {
+  return el('div', { class: 'pace-legend gr-legend' }, PACE_RATINGS.map((n) => el('span', { class: 'l' + n }, [n + ' – ' + PACE_RATING_LABEL[n]])));
+}
+
+function fleetInspCard(u, onChange) {
   const rec = inspToday(u, false);
   const r = (rec && rec.ratings) || {};
-  const sc = gradeScore(rec);
+  const sc = inspScore(rec);
   const box = el('div', { class: 'gr-card' + (sc && sc.fails.length ? ' bad' : '') });
   const changed = () => { if (onChange) onChange(); };
   box.appendChild(el('div', { class: 'gr-head' }, [
-    el('b', {}, ['📋 Inspection & Grade — ' + fmtDate(todayISO())]),
-    gradeBadge(sc),
+    el('b', {}, ['📋 Inspection — ' + fmtDate(todayISO())]),
+    inspBadge(sc),
   ]));
+  box.appendChild(paceScaleLegend());
   box.appendChild(el('div', { class: 'gr-sub' }, [sc ? sc.rated + ' of ' + sc.total + ' items rated' + (u.driver ? ' · driver: ' + u.driver : ' · no driver assigned') : 'Tap a rating for each item. Saves as you go.']));
-  for (const it of GRADE_ITEMS) {
-    const v = r[it.key] || '';
-    const b = (val, txt) => el('button', { class: 'gr-b gr-' + val + (v === val ? ' on' : ''), onclick: () => { inspRate(u, it.key, v === val ? '' : val); changed(); } }, [txt]);
+  for (const it of INSP_ITEMS) {
+    const v = inspVal(r[it.key]) || '';
+    const b = (val, txt) => el('button', { class: 'gr-b gr-' + val + (v === val ? ' on' : ''), title: val === 'na' ? 'N/A' : val + ' – ' + PACE_RATING_LABEL[val],
+      onclick: () => { inspRate(u, it.key, v === val ? '' : val); changed(); } }, [txt]);
     box.appendChild(el('div', { class: 'gr-row' }, [
       el('span', { class: 'gr-l' }, [it.label + (it.grounds ? ' *' : '')]),
-      el('span', { class: 'gr-btns' }, [b('good', 'Good'), b('attn', 'Attn'), b('fail', 'Fail'), b('na', 'N/A')]),
+      el('span', { class: 'gr-btns' }, PACE_RATINGS.map((n) => b(n, String(n))).concat([b('na', 'N/A')])),
     ]));
   }
   box.appendChild(el('div', { class: 'gr-foot' }, [
-    el('button', { class: 'btn small', onclick: () => { for (const it of GRADE_ITEMS) if (!r[it.key]) inspRate(u, it.key, 'good'); changed(); } }, ['✓ Rest are Good']),
-    el('span', { class: 'fl-wnote' }, ['* Fail = out of service + grade F']),
+    el('button', { class: 'btn small', onclick: () => { for (const it of INSP_ITEMS) if (!r[it.key]) inspRate(u, it.key, 3); changed(); } }, ['✓ Rest are 3 – Always Practiced']),
+    el('span', { class: 'fl-wnote' }, ['* 1 – Not Practiced = out of service']),
   ]));
   box.appendChild(el('input', { type: 'text', class: 'gr-note', placeholder: 'Inspection note (optional)', value: (rec && rec.note) || '',
     oninput: (e) => { const x = inspToday(u, true); x.note = e.target.value; fleetSave(); } }));
   return box;
 }
 
-// Voice: "tires good, oil low, cab dirty, lights out, rest good".
-function fleetParseGrade(body) {
+// Voice: "tires good, oil low, cab dirty, lights out, rest good" -> PACE 3 / 2 / 2 / 1, rest 3.
+// Also takes the scale words: "always" = 3, "somewhat" = 2, "not practiced" = 1.
+function fleetParseInspect(body) {
   const res = { set: {}, rest: false, text: body };
   const restRe = /\b(?:rest|everything else|all the rest|the rest)(?: (?:is|are|looks?))? (?:good|ok|okay|fine)\b/;
   if (restRe.test(body)) { res.rest = true; res.text = body.replace(restRe, ' '); }
-  const GOOD = /^(?:good|ok|okay|fine|clean|full|working|works|topped|great|there|present|tight)$/;
-  const ATTN = /^(?:low|dirty|messy|worn|needs|attention|cracked|chipped|dim|soft|so-so|fair|okayish|loose|wet)$/;
-  const FAIL = /^(?:fail|failed|failing|bad|bald|flat|broken|out|leaking|missing|empty|dead|filthy|trashed|unsafe|shot|gone)$/;
+  const GOOD = /^(?:always|good|ok|okay|fine|clean|full|working|works|topped|great|there|present|tight)$/;
+  const ATTN = /^(?:somewhat|low|dirty|messy|worn|needs|attention|cracked|chipped|dim|soft|so-so|fair|okayish|loose|wet)$/;
+  const FAIL = /^(?:notpracticed|fail|failed|failing|bad|bald|flat|broken|out|leaking|missing|empty|dead|filthy|trashed|unsafe|shot|gone)$/;
   const marks = [];
-  for (const it of GRADE_ITEMS) { const m = new RegExp(it.say.source, 'g'); let x; while ((x = m.exec(res.text))) marks.push({ at: x.index, end: x.index + x[0].length, it }); }
+  for (const it of INSP_ITEMS) { const m = new RegExp(it.say.source, 'g'); let x; while ((x = m.exec(res.text))) marks.push({ at: x.index, end: x.index + x[0].length, it }); }
   marks.sort((a, b) => a.at - b.at || b.end - a.end);
   const items = [];
   for (const m of marks) if (!items.some((k) => m.at < k.end && m.end > k.at)) items.push(m);
-  const words = []; const wr = /not working|[a-z'-]+/g; let w;
-  while ((w = wr.exec(res.text))) words.push({ at: w.index, end: w.index + w[0].length, t: w[0] === 'not working' ? 'broken' : w[0] });
-  const rate = (t) => FAIL.test(t) ? 'fail' : ATTN.test(t) ? 'attn' : GOOD.test(t) ? 'good' : '';
+  const words = []; const wr = /not working|not practiced|[a-z'-]+/g; let w;
+  while ((w = wr.exec(res.text))) words.push({ at: w.index, end: w.index + w[0].length, t: w[0] === 'not working' ? 'broken' : w[0] === 'not practiced' ? 'notpracticed' : w[0] });
+  const rate = (t) => FAIL.test(t) ? 1 : ATTN.test(t) ? 2 : GOOD.test(t) ? 3 : 0;
   const used = [];
   const taken = new Set();
   items.forEach((m, i) => {
@@ -1291,8 +1320,8 @@ function fleetParseGrade(body) {
   return res;
 }
 
-/* ---------- Grades screen ---------- */
-function renderFleetGrades() {
+/* ---------- Inspections screen (PACE rating scale) ---------- */
+function renderFleetInspections() {
   setAccent('#c2410c');
   homeSubview = 'fleet';
   const view = document.getElementById('view');
@@ -1300,62 +1329,64 @@ function renderFleetGrades() {
   view.appendChild(el('div', { class: 'route-head' }, [
     el('button', { class: 'btn ghost small', onclick: () => renderFleetView() }, ['← Fleet']),
     el('div', { class: 'actions', style: 'margin:0' }, [
-      el('button', { class: 'btn ghost small', onclick: () => openGradeReport() }, ['🖨 Print']),
+      el('button', { class: 'btn ghost small', onclick: () => openInspectionReport() }, ['🖨 Print']),
       el('button', { class: 'btn ghost small', onclick: () => exportInspectionsCsv() }, ['CSV']),
     ]),
   ]));
-  const trucks = fleetSorted().map((u) => ({ u, rec: inspLatest(u), sc: gradeScore(inspLatest(u)) }));
-  const graded = trucks.filter((x) => x.sc).sort((a, b) => a.sc.pct - b.sc.pct);
+  const trucks = fleetSorted().map((u) => ({ u, rec: inspLatest(u), sc: inspScore(inspLatest(u)) }));
+  const rated = trucks.filter((x) => x.sc).sort((a, b) => inspCompare(a.sc, b.sc));
   view.appendChild(el('div', { class: 'card' }, [
-    el('h2', { class: 'card-title' }, ['📊 Truck Grades']),
-    el('p', { class: 'sub', style: 'margin:0 0 8px' }, ['Latest inspection per truck, lowest first. Grade the trucks from the Walk-Through.']),
-    graded.length ? el('div', {}, graded.map((x) => el('button', { class: 'gr-line', onclick: () => { fleetWalkUnit = x.u; renderFleetWalk(); } }, [
+    el('h2', { class: 'card-title' }, ['📊 Truck Inspections']),
+    paceScaleLegend(),
+    el('p', { class: 'sub', style: 'margin:8px 0 8px' }, ['Latest inspection per truck, most Not Practiced first. Rate the trucks from the Walk-Through.']),
+    rated.length ? el('div', {}, rated.map((x) => el('button', { class: 'gr-line', onclick: () => { fleetWalkUnit = x.u; renderFleetWalk(); } }, [
       el('span', { class: 'gr-line-u' }, ['Unit ' + x.u.unit]),
-      el('span', { class: 'gr-line-m' }, [fmtDate(x.rec.date) + (x.rec.driver ? ' · ' + x.rec.driver : '') + (x.sc.fails.length ? ' · FAIL: ' + x.sc.fails.map((i) => i.short).join(', ') : x.sc.attn.length ? ' · fix: ' + x.sc.attn.map((i) => i.short).join(', ') : '')]),
-      gradeBadge(x.sc),
-    ]))) : el('div', { class: 'empty small' }, ['No trucks graded yet.']),
-    trucks.length > graded.length ? el('p', { class: 'sub', style: 'margin:8px 0 0' }, ['Not graded yet: Unit ' + trucks.filter((x) => !x.sc).map((x) => x.u.unit).join(', ')]) : null,
+      el('span', { class: 'gr-line-m' }, [fmtDate(x.rec.date) + (x.rec.driver ? ' · ' + x.rec.driver : '') + (x.sc.fails.length ? ' · 1 – Not Practiced: ' + x.sc.fails.map((i) => i.short).join(', ') : x.sc.attn.length ? ' · 2 – Somewhat: ' + x.sc.attn.map((i) => i.short).join(', ') : '')]),
+      inspBadge(x.sc),
+    ]))) : el('div', { class: 'empty small' }, ['No trucks inspected yet.']),
+    trucks.length > rated.length ? el('p', { class: 'sub', style: 'margin:8px 0 0' }, ['Not inspected yet: Unit ' + trucks.filter((x) => !x.sc).map((x) => x.u.unit).join(', ')]) : null,
   ]));
-  const ds = gradedDriverNames().map((n) => ({ n, g: driverGrade(n) })).filter((x) => x.g).sort((a, b) => a.g.avg - b.g.avg);
+  const ds = inspectedDriverNames().map((n) => ({ n, g: driverInspSummary(n) })).filter((x) => x.g).sort((a, b) => inspCompare(a.g, b.g));
   view.appendChild(el('div', { class: 'card' }, [
-    el('h2', { class: 'card-title' }, ['👤 Driver Grades']),
-    el('p', { class: 'sub', style: 'margin:0 0 8px' }, ['Average of every inspection on the truck they were assigned. Repeat problems = flagged on 2+ of their last 3.']),
+    el('h2', { class: 'card-title' }, ['👤 Driver Inspections']),
+    el('p', { class: 'sub', style: 'margin:0 0 8px' }, ['Every inspection on the truck they were assigned: Not Practiced count and Always Practiced % of all items rated. Repeat problems = rated 1 or 2 on 2+ of their last 3.']),
     ds.length ? el('div', {}, ds.map((x) => el('div', { class: 'gr-line' }, [
       el('span', { class: 'gr-line-u' }, [x.n]),
       el('span', { class: 'gr-line-m' }, [x.g.count + ' inspection(s) · recent ' + x.g.recent.join(' ') + (x.g.repeat.length ? ' · ⚠ repeat: ' + x.g.repeat.join(', ') : '')]),
-      gradeBadge({ letter: x.g.letter, pct: x.g.avg }),
-    ]))) : el('div', { class: 'empty small' }, ['Assign drivers to trucks (Walk-Through) to see driver grades.']),
+      inspBadge(x.g),
+    ]))) : el('div', { class: 'empty small' }, ['Assign drivers to trucks (Walk-Through) to see driver inspection results.']),
   ]));
 }
 
 function exportInspectionsCsv() {
-  const rows = [['Date', 'Unit', 'Driver', 'Score %', 'Grade', 'Safety Fail', ...GRADE_ITEMS.map((i) => i.label), 'Note']];
+  const rows = [['Date', 'Unit', 'Driver', 'NP Count', 'Rated', 'Always Practiced %', 'Safety Item Not Practiced', ...INSP_ITEMS.map((i) => i.label), 'Note']];
   for (const u of fleet) for (const rec of (u.inspections || [])) {
-    const sc = gradeScore(rec);
-    rows.push([rec.date, u.unit, rec.driver || '', sc ? sc.raw : '', sc ? sc.letter : '', sc && sc.capped ? 'YES' : '', ...GRADE_ITEMS.map((i) => GRADE_LABEL[rec.ratings[i.key]] || ''), rec.note || '']);
+    const sc = inspScore(rec);
+    rows.push([rec.date, u.unit, rec.driver || '', sc ? sc.np : '', sc ? sc.rated : '', sc ? sc.apPct : '', sc && sc.safety ? 'YES' : '', ...INSP_ITEMS.map((i) => inspRatingText(rec.ratings[i.key])), rec.note || '']);
   }
   if (rows.length === 1) { toast('No inspections yet.'); return; }
   downloadCsv('truck-inspections-' + todayISO() + '.csv', rows);
 }
 
-function openGradeReport() {
-  const trucks = fleetSorted().map((u) => ({ u, rec: inspLatest(u), sc: gradeScore(inspLatest(u)) })).filter((x) => x.sc).sort((a, b) => a.sc.pct - b.sc.pct);
-  if (!trucks.length) { toast('No trucks graded yet.'); return; }
+function openInspectionReport() {
+  const trucks = fleetSorted().map((u) => ({ u, rec: inspLatest(u), sc: inspScore(inspLatest(u)) })).filter((x) => x.sc).sort((a, b) => inspCompare(a.sc, b.sc));
+  if (!trucks.length) { toast('No trucks inspected yet.'); return; }
   const w = window.open('', '_blank', 'width=900,height=900');
   if (!w) { toast('Allow pop-ups to open the report.'); return; }
   const css = 'body{font-family:Arial,sans-serif;color:#111;margin:24px;font-size:12px}h1{font-size:18px;margin:8px 0 2px}h2{font-size:14px;margin:18px 0 4px}p{margin:0 0 8px;color:#555}' +
-    'table{width:100%;border-collapse:collapse}th,td{border:1px solid #bbb;padding:6px 7px;text-align:left;vertical-align:top}th{background:#f1f5f9;font-size:11px;text-transform:uppercase}td.g{font-weight:700;font-size:15px;text-align:center;width:70px}' +
+    'table{width:100%;border-collapse:collapse}th,td{border:1px solid #bbb;padding:6px 7px;text-align:left;vertical-align:top}th{background:#f1f5f9;font-size:11px;text-transform:uppercase}td.g{font-weight:700;font-size:13px;text-align:center;width:90px}' +
     '.bar{margin:0 0 14px}.bar button{font:inherit;padding:8px 14px;border:1px solid #94a3b8;border-radius:8px;background:#fff;cursor:pointer}@media print{.bar{display:none}}.logo{height:46px}';
-  const trows = trucks.map((x) => '<tr><td><b>Unit ' + esc(x.u.unit) + '</b></td><td class="g">' + x.sc.letter + '<br><small>' + (x.sc.capped ? 'safety fail' : x.sc.pct + '%') + '</small></td><td>' + esc(fmtDate(x.rec.date)) +
+  const scale = PACE_RATINGS.map((n) => n + ' – ' + PACE_RATING_LABEL[n]).join(' · ');
+  const trows = trucks.map((x) => '<tr><td><b>Unit ' + esc(x.u.unit) + '</b></td><td class="g">' + x.sc.np + '</td><td class="g">' + x.sc.apPct + '%</td><td>' + esc(fmtDate(x.rec.date)) +
     '</td><td>' + esc(x.rec.driver || '—') + '</td><td>' + esc(x.sc.fails.map((i) => i.label).join(', ') || '—') + '</td><td>' + esc(x.sc.attn.map((i) => i.label).join(', ') || '—') + '</td><td>' + esc(x.rec.note || '') + '</td></tr>').join('');
-  const ds = gradedDriverNames().map((n) => ({ n, g: driverGrade(n) })).filter((x) => x.g).sort((a, b) => a.g.avg - b.g.avg);
-  const drows = ds.map((x) => '<tr><td><b>' + esc(x.n) + '</b></td><td class="g">' + x.g.letter + '<br><small>' + x.g.avg + '%</small></td><td>' + x.g.count + '</td><td>' + esc(x.g.recent.join(' ')) + '</td><td>' + esc(x.g.repeat.join(', ') || '—') + '</td></tr>').join('');
-  w.document.write('<!doctype html><html><head><meta charset=utf-8><title>Truck grades — ' + esc(todayISO()) + '</title><style>' + css + '</style></head><body>' +
+  const ds = inspectedDriverNames().map((n) => ({ n, g: driverInspSummary(n) })).filter((x) => x.g).sort((a, b) => inspCompare(a.g, b.g));
+  const drows = ds.map((x) => '<tr><td><b>' + esc(x.n) + '</b></td><td class="g">' + x.g.np + '</td><td class="g">' + x.g.apPct + '%</td><td>' + x.g.count + '</td><td>' + esc(x.g.recent.join(' ')) + '</td><td>' + esc(x.g.repeat.join(', ') || '—') + '</td></tr>').join('');
+  w.document.write('<!doctype html><html><head><meta charset=utf-8><title>Truck inspections — ' + esc(todayISO()) + '</title><style>' + css + '</style></head><body>' +
     '<div class="bar"><button onclick="print()">🖨 Print / Save PDF</button></div>' +
     (typeof AF_LOGO !== 'undefined' ? '<img class="logo" src="' + AF_LOGO + '" alt="U.S. AutoForce">' : '') +
-    '<h1>Truck Inspection Grades</h1><p>Generated ' + esc(fmtDate(todayISO())) + ' · A 90%+ · B 80%+ · C 70%+ · D 60%+ · F below · Good=2, Needs attention=1, Fail=0 · a Fail on tires, brakes, lights or leaks = F (counts as 59% in driver averages)</p>' +
-    '<h2>Trucks (latest inspection, lowest first)</h2><table><tr><th>Truck</th><th>Grade</th><th>Date</th><th>Driver</th><th>Failed</th><th>Needs attention</th><th>Note</th></tr>' + trows + '</table>' +
-    (drows ? '<h2>Drivers</h2><table><tr><th>Driver</th><th>Average</th><th>Inspections</th><th>Recent</th><th>Repeat problems</th></tr>' + drows + '</table>' : '') +
+    '<h1>Truck Inspections</h1><p>Generated ' + esc(fmtDate(todayISO())) + ' · Rating Scale: ' + esc(scale) + ' · N/A not counted · NP = items rated 1 – Not Practiced · a 1 on tires, brakes, lights or leaks = out of service</p>' +
+    '<h2>Trucks (latest inspection, most Not Practiced first)</h2><table><tr><th>Truck</th><th>NP</th><th>Always Practiced</th><th>Date</th><th>Driver</th><th>1 – Not Practiced</th><th>2 – Somewhat Practiced</th><th>Note</th></tr>' + trows + '</table>' +
+    (drows ? '<h2>Drivers</h2><table><tr><th>Driver</th><th>NP</th><th>Always Practiced</th><th>Inspections</th><th>Recent (Always Practiced %)</th><th>Repeat problems</th></tr>' + drows + '</table>' : '') +
     '</body></html>');
   w.document.close();
 }
@@ -1479,7 +1510,7 @@ function renderFleetView(focusUnit) {
       el('button', { class: 'btn primary', onclick: () => { fleetWalkUnit = null; renderFleetWalk(); } }, ['🚛 Walk-Through']),
       el('button', { class: 'btn', onclick: () => openFleetServiceList() }, ['🔧 Service list for lease / shop']),
       winterShown() ? el('button', { class: 'btn', onclick: () => openWinterRestock() }, ['❄️ Winter restock list']) : null,
-      el('button', { class: 'btn', onclick: () => renderFleetGrades() }, ['📊 Grades']),
+      el('button', { class: 'btn', onclick: () => renderFleetInspections() }, ['📊 Inspections']),
     ]),
     el('label', { class: 'fl-wtoggle' }, [
       el('input', { type: 'checkbox', checked: winterAlways(), onchange: (e) => { try { localStorage.setItem(WINTER_ALWAYS_KEY, e.target.checked ? 'on' : 'off'); } catch (er) {} renderFleetView(); } }),
@@ -1588,7 +1619,7 @@ function fleetCard(u) {
     text('warehouse', 'Warehouse / Location', 'e.g. West Branch'),
     text('notes', 'Notes', 'Shop, permits, IFTA, etc.'),
     u.walkedAt ? el('p', { class: 'sub', style: 'margin:4px 0 8px' }, ['Last walk-through check: ' + fmtDate(localDateOf(u.walkedAt))]) : null,
-    gradeScore(inspLatest(u)) ? el('p', { class: 'sub', style: 'margin:4px 0 8px' }, ['📋 Last grade: ' + gradeScore(inspLatest(u)).label + ' · ' + fmtDate(inspLatest(u).date) + (inspLatest(u).driver ? ' · ' + inspLatest(u).driver : '')]) : null,
+    inspScore(inspLatest(u)) ? el('p', { class: 'sub', style: 'margin:4px 0 8px' }, ['📋 Last inspection: ' + inspScore(inspLatest(u)).label + ' · ' + fmtDate(inspLatest(u).date) + (inspLatest(u).driver ? ' · ' + inspLatest(u).driver : '')]) : null,
     u.driver ? el('p', { class: 'sub', style: 'margin:4px 0 8px' }, ['👤 Assigned driver: ' + u.driver]) : null,
     winterShown() ? el('p', { class: 'sub fl-wline' + (winterStatus(u).missing.length ? ' bad' : '') , style: 'margin:4px 0 8px' }, ['❄️ Winter kit: ' + winterSummary(u)]) : null,
     el('div', { class: 'actions' }, [el('button', { class: 'btn ghost small danger', onclick: () => deleteFleetUnit(u) }, ['Delete unit'])]),
@@ -1610,12 +1641,12 @@ function exportFleet() {
 
 function exportFleetCsv() {
   if (!fleet.length) { toast('Fleet roster is empty.'); return; }
-  const rows = [['Unit', 'Plate', 'Year/Make/Model', 'VIN', 'Warehouse', 'Last Annual Inspection', 'Inspection Due', 'Registration Expires', 'Insurance Expires', 'Next Service Due', 'Service Due Miles', 'Status', 'Problems', 'Last Walk-Through', 'Winter Kit', 'Assigned Driver', 'Last Grade', 'Notes']];
+  const rows = [['Unit', 'Plate', 'Year/Make/Model', 'VIN', 'Warehouse', 'Last Annual Inspection', 'Inspection Due', 'Registration Expires', 'Insurance Expires', 'Next Service Due', 'Service Due Miles', 'Status', 'Problems', 'Last Walk-Through', 'Winter Kit', 'Assigned Driver', 'Last Inspection (PACE scale)', 'Notes']];
   for (const u of fleetSorted()) {
     const ch = fleetChecks(u);
     rows.push([u.unit, u.plate, u.make, u.vin, u.warehouse, u.lastInspection, ch[0].due, u.regExp, u.insExp, u.serviceDue, u.serviceMiles,
       fleetOutOfService(u) ? 'OUT OF SERVICE' : fleetDueSoon(u).length ? 'DUE SOON' : 'OK',
-      fleetProblems(u).map((c) => c.item.short + ': ' + c.text).join('; '), localDateOf(u.walkedAt), winterRec(u, false) ? winterSummary(u) : '', u.driver || '', gradeScore(inspLatest(u)) ? gradeScore(inspLatest(u)).label : '', u.notes]);
+      fleetProblems(u).map((c) => c.item.short + ': ' + c.text).join('; '), localDateOf(u.walkedAt), winterRec(u, false) ? winterSummary(u) : '', u.driver || '', inspScore(inspLatest(u)) ? inspScore(inspLatest(u)).label : '', u.notes]);
   }
   downloadCsv('fleet-roster-' + todayISO() + '.csv', rows);
 }
@@ -1710,8 +1741,8 @@ function fleetParseSpeech(text, todayIso) {
   if (mi) { out.miles = Number(mi[1].replace(/,/g, '')).toLocaleString('en-US'); body = body.replace(mi[0], ' '); }
   out.winter = fleetParseWinter(body);
   body = out.winter.rest;
-  out.grade = fleetParseGrade(body);
-  body = out.grade.text;
+  out.insp = fleetParseInspect(body);
+  body = out.insp.text;
   if (/\b(checked|all good|good to go|looks good|it'?s good)\b/.test(body)) out.checked = true;
   const hits = [];
   for (const k of FLEET_SAY) { k.re.lastIndex = 0; let m; while ((m = k.re.exec(body))) hits.push({ prop: k.prop, at: m.index, end: m.index + m[0].length }); }
@@ -1808,11 +1839,11 @@ function fleetApplySpeech(text) {
     for (const [k, v] of Object.entries(p.winter.set)) winterSet(u, k, v);
     done.push('winter kit ' + winterSummary(u));
   }
-  if (p.grade && (p.grade.rest || Object.keys(p.grade.set).length)) {
-    for (const [k, v] of Object.entries(p.grade.set)) inspRate(u, k, v);
-    if (p.grade.rest) { const rec = inspToday(u, true); for (const it of GRADE_ITEMS) if (!rec.ratings[it.key]) inspRate(u, it.key, 'good'); }
-    const sc = gradeScore(inspToday(u, false));
-    if (sc) done.push('grade ' + sc.label);
+  if (p.insp && (p.insp.rest || Object.keys(p.insp.set).length)) {
+    for (const [k, v] of Object.entries(p.insp.set)) inspRate(u, k, v);
+    if (p.insp.rest) { const rec = inspToday(u, true); for (const it of INSP_ITEMS) if (!rec.ratings[it.key]) inspRate(u, it.key, 3); }
+    const sc = inspScore(inspToday(u, false));
+    if (sc) done.push('inspection ' + sc.label);
   }
   if (p.checked) { u.walkedAt = new Date().toISOString(); done.push('✓ checked'); }
   u.updatedAt = new Date().toISOString();
@@ -1946,7 +1977,7 @@ function renderFleetWalk() {
       fleetDriverField(u, () => { u.updatedAt = new Date().toISOString(); fleetSave(); }),
       (() => {
         const holder = el('div', {});
-        const paintG = () => { holder.innerHTML = ''; holder.appendChild(fleetGradeCard(u, () => {
+        const paintG = () => { holder.innerHTML = ''; holder.appendChild(fleetInspCard(u, () => {
           if (!fleetWalkUndo || fleetWalkUndo.unit !== u) fleetWalkUndo = { unit: u, before: JSON.parse(JSON.stringify(u)) };
           touch(); paintG();
         })); };
@@ -2083,10 +2114,10 @@ function collectAttentionItems() {
       });
       continue;
     }
-    const gsc = gradeScore(inspLatest(u));
+    const gsc = inspScore(inspLatest(u));
     if (gsc && gsc.fails.length) items.push({ kind: 'fleet',
       icon: '📋', title: 'Unit ' + u.unit + ' — failed inspection: ' + gsc.fails.map((x) => x.short).join(', '),
-      sub: 'Grade ' + gsc.label + ' on ' + fmtDate(inspLatest(u).date) + (inspLatest(u).driver ? ' · driver ' + inspLatest(u).driver : ''),
+      sub: '1 – Not Practiced · ' + gsc.label + ' on ' + fmtDate(inspLatest(u).date) + (inspLatest(u).driver ? ' · driver ' + inspLatest(u).driver : ''),
       cls: 'warn', go: () => { fleetWalkUnit = u; renderFleetWalk(); },
     });
     if (winterShown()) {
@@ -2604,7 +2635,7 @@ function driverNames() {
   for (const t of trainees) if (t.name) names.add(t.name);
   for (const d of drivers) if (d.name) names.add(d.name);
   for (const p of paceEvals) if (p.driver) names.add(p.driver);
-  for (const n of gradedDriverNames()) names.add(n);
+  for (const n of inspectedDriverNames()) names.add(n);
   return [...names].sort();
 }
 
@@ -2734,20 +2765,20 @@ function renderDossierFor(name, body) {
   }
   report.appendChild(paceSec);
 
-  const dg = driverGrade(name);
-  const insSec = sec('Truck Inspections' + (dg ? ' — average ' + dg.letter + ' (' + dg.avg + '%)' : ' (0)'));
+  const dg = driverInspSummary(name);
+  const insSec = sec('Truck Inspections' + (dg ? ' — ' + dg.count + ' on file · ' + dg.label : ' (0)'));
   if (!dg) insSec.appendChild(el('p', { class: 'rsub' }, ['No truck inspections on file.']));
   else {
     const tbl = el('table', { class: 'rtbl' });
     const head = el('tr', {});
-    for (const h of ['Date', 'Truck', 'Grade', 'Failed / needs attention']) head.appendChild(el('th', {}, [h]));
+    for (const h of ['Date', 'Truck', 'PACE Rating Scale', '1 – Not Practiced / 2 – Somewhat Practiced']) head.appendChild(el('th', {}, [h]));
     tbl.appendChild(head);
     for (const x of dg.list.slice().reverse()) {
       tbl.appendChild(el('tr', {}, [
         el('td', {}, [fmtDate(x.rec.date)]),
         el('td', {}, ['Unit ' + x.u.unit]),
         el('td', {}, [x.sc.label]),
-        el('td', {}, [x.sc.fails.map((i) => 'FAIL ' + i.short).concat(x.sc.attn.map((i) => i.short)).join(', ') || '—']),
+        el('td', {}, [x.sc.fails.map((i) => '1 ' + i.short).concat(x.sc.attn.map((i) => '2 ' + i.short)).join(', ') || '—']),
       ]));
     }
     insSec.appendChild(tbl);

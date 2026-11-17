@@ -967,7 +967,7 @@ input.invalid, select.invalid, textarea.invalid { border-color: #dc2626 !importa
 :root[data-theme='dark'] .fl-winter { background: #0c1a2e; border-color: #1e3a5f; }
 :root[data-theme='dark'] .fl-winter.bad { background: #2a0a0a; border-color: #7f1d1d; }
 :root[data-theme='dark'] .fl-winter.ok { background: #052e16; border-color: #14532d; }
-/* Truck inspection grade */
+/* Truck inspection — PACE rating scale (1 Not / 2 Somewhat / 3 Always Practiced) */
 .gr-card { margin: 12px 0 4px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: #f8fafc; }
 .gr-card.bad { border-color: #dc2626; background: #fef2f2; }
 .gr-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; }
@@ -976,19 +976,18 @@ input.invalid, select.invalid, textarea.invalid { border-color: #dc2626 !importa
 .gr-l { font-size: 13px; font-weight: 600; color: var(--ink); flex: 1 1 130px; min-width: 0; }
 .gr-btns { display: flex; gap: 4px; flex-shrink: 0; }
 .gr-b { min-width: 48px; min-height: 36px; padding: 0 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); font-weight: 700; font-size: 12px; cursor: pointer; }
-.gr-b.gr-good.on { background: #16a34a; border-color: #16a34a; color: #fff; }
-.gr-b.gr-attn.on { background: #d97706; border-color: #d97706; color: #fff; }
-.gr-b.gr-fail.on { background: #dc2626; border-color: #dc2626; color: #fff; }
+.gr-b.gr-3.on { background: #16a34a; border-color: #16a34a; color: #fff; }
+.gr-b.gr-2.on { background: #d97706; border-color: #d97706; color: #fff; }
+.gr-b.gr-1.on { background: #dc2626; border-color: #dc2626; color: #fff; }
+.gr-legend { margin: 4px 0 6px; }
 .gr-b.gr-na.on { background: #64748b; border-color: #64748b; color: #fff; }
 .gr-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
 .gr-note { width: 100%; margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--ink); font: inherit; font-size: 13px; }
 .gr-driver { width: 100%; }
-.gr-badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 13px; white-space: nowrap; background: #e2e8f0; color: #475569; }
-.gr-badge.gA { background: #dcfce7; color: #15803d; }
-.gr-badge.gB { background: #d9f99d; color: #3f6212; }
-.gr-badge.gC { background: #fef9c3; color: #a16207; }
-.gr-badge.gD { background: #ffedd5; color: #c2410c; }
-.gr-badge.gF { background: #fee2e2; color: #b91c1c; }
+.gr-badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 12px; white-space: normal; text-align: center; max-width: 55%; background: #e2e8f0; color: #475569; }
+.gr-badge.pr3 { background: #dcfce7; color: #15803d; }
+.gr-badge.pr2 { background: #fef9c3; color: #a16207; }
+.gr-badge.pr1 { background: #fee2e2; color: #b91c1c; }
 .gr-line { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 4px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
 .gr-line-u { font-weight: 800; flex-shrink: 0; min-width: 72px; }
 .gr-line-m { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); }
